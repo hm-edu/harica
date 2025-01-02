@@ -11,7 +11,7 @@ require (
 	github.com/miekg/dns v1.1.62
 	github.com/pquerna/otp v1.4.0
 	github.com/spf13/cobra v1.8.1
-	golang.org/x/net v0.32.0
+	golang.org/x/net v0.33.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
