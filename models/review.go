@@ -5,6 +5,7 @@ type ReviewRequest struct {
 	Status         string `json:"status"`
 	FilterPostDTOs []any  `json:"filterPostDTOs"`
 }
+
 type ReviewResponse struct {
 	TransactionID            string          `json:"transactionId,omitempty"`
 	ChainedTransactionID     any             `json:"chainedTransactionId,omitempty"`

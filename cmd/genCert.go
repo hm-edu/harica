@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
+type GenCertConfig struct {
 	domains           []string
 	csr               string
 	transactionType   string
@@ -19,7 +19,10 @@ var (
 	validatorEmail    string
 	validatorPassword string
 	validatorTOTPSeed string
-	debug             bool
+}
+
+var (
+	genCertConfig GenCertConfig
 )
 
 // genCertCmd represents the genCert command
@@ -27,23 +30,25 @@ var genCertCmd = &cobra.Command{
 	Use: "gen-cert",
 	Run: func(cmd *cobra.Command, args []string) {
 
-		requester, err := client.NewClient(requesterEmail, requesterPassword, requesterTOTPSeed, client.WithDebug(debug))
+		requester, err := client.NewClient(genCertConfig.requesterEmail, genCertConfig.requesterPassword, genCertConfig.requesterTOTPSeed, client.WithDebug(debug))
 		if err != nil {
 			slog.Error("failed to create requester client", slog.Any("error", err))
 			os.Exit(1)
 		}
-		validator, err := client.NewClient(validatorEmail, validatorPassword, validatorTOTPSeed, client.WithDebug(debug))
+		validator, err := client.NewClient(genCertConfig.validatorEmail, genCertConfig.validatorPassword, genCertConfig.validatorTOTPSeed, client.WithDebug(debug))
 		if err != nil {
 			slog.Error("failed to create validator client", slog.Any("error", err))
 			os.Exit(1)
 		}
 
-		d, err := requester.CheckDomainNames(domains)
-		if err != nil {
-			slog.Error("failed to check domain names", slog.Any("error", err))
+		orgs, err := requester.CheckMatchingOrganization(genCertConfig.domains)
+		if err != nil || len(orgs) == 0 {
+			slog.Error("failed to check matching organization", slog.Any("error", err))
 			os.Exit(1)
 		}
-		transaction, err := requester.RequestCertificate(d, csr, transactionType)
+		slog.Info("matching organizations", slog.Any("organizations", orgs))
+
+		transaction, err := requester.RequestCertificate(genCertConfig.domains, genCertConfig.csr, genCertConfig.transactionType, orgs[0])
 		if err != nil {
 			slog.Error("failed to request certificate", slog.Any("error", err))
 			os.Exit(1)
@@ -64,6 +69,7 @@ var genCertCmd = &cobra.Command{
 						os.Exit(1)
 					}
 				}
+				break
 			}
 		}
 		cert, err := requester.GetCertificate(transaction.TransactionID)
@@ -77,16 +83,16 @@ var genCertCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(genCertCmd)
-	genCertCmd.Flags().StringSliceVarP(&domains, "domains", "d", []string{}, "Domains to request certificate for")
-	genCertCmd.Flags().StringVar(&csr, "csr", "", "CSR to request certificate with")
-	genCertCmd.Flags().StringVarP(&transactionType, "transaction-type", "t", "DV", "Transaction type to request certificate with")
-	genCertCmd.Flags().StringVar(&requesterEmail, "requester-email", "", "Email of requester")
-	genCertCmd.Flags().StringVar(&requesterPassword, "requester-password", "", "Password of requester")
-	genCertCmd.Flags().StringVar(&requesterTOTPSeed, "requester-totp-seed", "", "TOTP seed of requester")
-	genCertCmd.Flags().StringVar(&validatorEmail, "validator-email", "", "Email of validator")
-	genCertCmd.Flags().StringVar(&validatorPassword, "validator-password", "", "Password of validator")
-	genCertCmd.Flags().StringVar(&validatorTOTPSeed, "validator-totp-seed", "", "TOTP seed of validator")
-	genCertCmd.Flags().BoolVar(&debug, "debug", false, "Enable debug logging")
+	genCertCmd.Flags().StringSliceVar(&genCertConfig.domains, "domains", []string{}, "Domains to request certificate for")
+	genCertCmd.Flags().StringVar(&genCertConfig.csr, "csr", "", "CSR to request certificate with")
+	genCertCmd.Flags().StringVarP(&genCertConfig.transactionType, "transaction-type", "t", "DV", "Transaction type to request certificate with")
+	genCertCmd.Flags().StringVar(&genCertConfig.requesterEmail, "requester-email", "", "Email of requester")
+	genCertCmd.Flags().StringVar(&genCertConfig.requesterPassword, "requester-password", "", "Password of requester")
+	genCertCmd.Flags().StringVar(&genCertConfig.requesterTOTPSeed, "requester-totp-seed", "", "TOTP seed of requester")
+	genCertCmd.Flags().StringVar(&genCertConfig.validatorEmail, "validator-email", "", "Email of validator")
+	genCertCmd.Flags().StringVar(&genCertConfig.validatorPassword, "validator-password", "", "Password of validator")
+	genCertCmd.Flags().StringVar(&genCertConfig.validatorTOTPSeed, "validator-totp-seed", "", "TOTP seed of validator")
+
 	genCertCmd.MarkFlagRequired("domains")             //nolint:errcheck
 	genCertCmd.MarkFlagRequired("csr")                 //nolint:errcheck
 	genCertCmd.MarkFlagRequired("requester-email")     //nolint:errcheck

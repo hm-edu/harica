@@ -36,3 +36,10 @@ type CertificateRequestResponse struct {
 	TransactionID      string `json:"id"`
 	RequiresConsentKey bool   `json:"requiresConsentKey"`
 }
+
+type RevocationReasonsResponse struct {
+	Name                       string `json:"name"`
+	IsClient                   bool   `json:"isClient"`
+	RevocationMesasge          string `json:"revocationMessage"`
+	RevocationMessageLocalized string `json:"revocationMessageLocalised"`
+}

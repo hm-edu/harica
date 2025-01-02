@@ -24,3 +24,9 @@ go.work.sum
 # env file
 .env
 harica
+
+dist/
+
+# Config files for local development
+dns_configs
+.vscode/launch.json

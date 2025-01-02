@@ -1,7 +1,10 @@
 package client
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -16,13 +19,29 @@ import (
 )
 
 const (
-	BaseURL               = "https://cm.harica.gr"
-	LoginPath             = "/api/User/Login"
-	LoginPathTotp         = "/api/User/Login2FA"
+	BaseURL = "https://cm.harica.gr"
+
+	LoginPath     = "/api/User/Login"
+	LoginPathTotp = "/api/User/Login2FA"
+
+	CreatePrevalidaitonPath = "/api/OrganizationAdmin/CreatePrevalidatedValidation"
+	GetOrganizationsPath    = "/api/OrganizationAdmin/GetOrganizations"
+
+	UpdateReviewsPath             = "/api/OrganizationValidatorSSL/UpdateReviews"
+	GetReviewableTransactionsPath = "/api/OrganizationValidatorSSL/GetSSLReviewableTransactions"
+	RevokeCertificatePath         = "/api/OrganizationValidatorSSL/RevokeCertificate"
+
+	GetCertificatePath    = "/api/Certificate/GetCertificate"
 	RevocationReasonsPath = "/api/Certificate/GetRevocationReasons"
-	DomainValidationsPath = "/api/ServerCertificate/GetDomainValidations"
-	ApplicationJson       = "application/json"
-	RefreshInterval       = 15 * time.Minute
+
+	DomainValidationsPath         = "/api/ServerCertificate/GetDomainValidations"
+	CheckMatchingOrganizationPath = "/api/ServerCertificate/CheckMachingOrganization"
+	CheckDomainNamesPath          = "/api/ServerCertificate/CheckDomainNames"
+	RequestServerCertificatePath  = "/api/ServerCertificate/RequestServerCertificate"
+
+	ApplicationJson = "application/json"
+	DnsValidation   = "3.2.2.4.7"
+	RefreshInterval = 15 * time.Minute
 )
 
 type Client struct {
@@ -30,6 +49,10 @@ type Client struct {
 	scheduler    gocron.Scheduler
 	currentToken string
 	debug        bool
+}
+
+type Domain struct {
+	Domain string `json:"domain"`
 }
 
 type Option func(*Client)
@@ -167,27 +190,44 @@ func (c *Client) login(user, password string) error {
 	return nil
 }
 
-func (c *Client) GetRevocationReasons() error {
-	resp, err := c.client.R().Post(BaseURL + RevocationReasonsPath)
+func (c *Client) Shutdown() error {
+	err := c.scheduler.Shutdown()
 	if err != nil {
 		return err
 	}
-	data := resp.String()
-	fmt.Print(data)
 	return nil
 }
 
-func (c *Client) GetDomainValidations() error {
-	resp, err := c.client.R().Post(BaseURL + DomainValidationsPath)
+func (c *Client) GetRevocationReasons() ([]models.RevocationReasonsResponse, error) {
+	var response []models.RevocationReasonsResponse
+	resp, err := c.client.R().
+		ExpectContentType(ApplicationJson).
+		SetResult(&response).
+		Post(BaseURL + RevocationReasonsPath)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+	}
+	fmt.Printf("Response: %v", resp)
+	return response, nil
+}
+
+func (c *Client) RevokeCertificate(reason models.RevocationReasonsResponse, comment string, transactionId string) error {
+	_, err := c.client.R().
+		SetHeader("Content-Type", ApplicationJson).
+		SetBody(map[string]interface{}{
+			"transactionId": transactionId,
+			"notes":         comment,
+			"name":          reason.Name,
+			"message":       "",
+		}).
+		Post(BaseURL + RevokeCertificatePath)
 	if err != nil {
 		return err
 	}
-	fmt.Print(resp.String())
 	return nil
-}
-
-type Domain struct {
-	Domain string `json:"domain"`
 }
 
 func (c *Client) CheckMatchingOrganization(domains []string) ([]models.OrganizationResponse, error) {
@@ -200,7 +240,7 @@ func (c *Client) CheckMatchingOrganization(domains []string) ([]models.Organizat
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetResult(&response).SetBody(domainDto).
-		Post(BaseURL + "/api/ServerCertificate/CheckMachingOrganization")
+		Post(BaseURL + CheckMatchingOrganizationPath)
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +257,7 @@ func (c *Client) GetCertificate(id string) (*models.CertificateResponse, error) 
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetBody(map[string]interface{}{"id": id}).
-		Post(BaseURL + "/api/Certificate/GetCertificate")
+		Post(BaseURL + GetCertificatePath)
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +278,7 @@ func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, er
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetBody(domainDto).
-		Post(BaseURL + "/api/ServerCertificate/CheckDomainNames")
+		Post(BaseURL + CheckDomainNamesPath)
 	if err != nil {
 		return nil, err
 	}
@@ -248,24 +288,62 @@ func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, er
 	return domainResp, nil
 }
 
-func (c *Client) RequestCertificate(domains []models.DomainResponse, csr string, transactionType string) (*models.CertificateRequestResponse, error) {
-	domainJsonBytes, _ := json.Marshal(domains)
+func (c *Client) RequestCertificate(domains []string, csr string, transactionType string, organization models.OrganizationResponse) (*models.CertificateRequestResponse, error) {
+	var domainDto []Domain
+	for _, domain := range domains {
+		domainDto = append(domainDto, Domain{Domain: domain})
+	}
+
+	// Ensure that the CSR is in the correct format so we parse it and transform it again
+	// Parse the CSR
+	block, _ := pem.Decode([]byte(csr))
+	if block == nil || block.Type != "CERTIFICATE REQUEST" {
+		return nil, errors.New("failed to decode PEM block containing CSR")
+	}
+	csrParsed, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CSR: %v", err)
+	}
+
+	if err := csrParsed.CheckSignature(); err != nil {
+		return nil, fmt.Errorf("CSR signature is invalid: %v", err)
+	}
+
+	// Write the CSR as a PEM encoded string again
+	csr = string(pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE REQUEST",
+		Bytes: csrParsed.Raw,
+	}))
+
+	domainJsonBytes, _ := json.Marshal(domainDto)
 	domainJson := string(domainJsonBytes)
 	var result models.CertificateRequestResponse
+
+	body := map[string]string{
+		"domains":         domainJson,
+		"domainsString":   domainJson,
+		"csr":             csr,
+		"isManualCsr":     "true",
+		"consentSameKey":  "true",
+		"transactionType": transactionType,
+		"duration":        "1",
+	}
+
+	if transactionType == "OV" {
+		body["organizationDN"] = fmt.Sprintf("OrganizationId:%s&C:%s&ST:%s&L:%s&O:%s",
+			organization.ID,
+			organization.Country,
+			organization.State,
+			organization.Locality,
+			organization.OrganizationName)
+	}
+
 	resp, err := c.client.R().
 		SetHeader("Content-Type", "multipart/form-data").
 		SetResult(&result).
 		ExpectContentType(ApplicationJson).
-		SetMultipartFormData(map[string]string{
-			"domains":         domainJson,
-			"domainsString":   domainJson,
-			"csr":             csr,
-			"isManualCsr":     "true",
-			"consentSameKey":  "true",
-			"transactionType": transactionType,
-			"duration":        "1",
-		}).
-		Post(BaseURL + "/api/ServerCertificate/RequestServerCertificate")
+		SetMultipartFormData(body).
+		Post(BaseURL + RequestServerCertificatePath)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +364,7 @@ func (c *Client) GetPendingReviews() ([]models.ReviewResponse, error) {
 			Status:         "Pending",
 			FilterPostDTOs: []any{},
 		}).
-		Post(BaseURL + "/api/OrganizationValidatorSSL/GetSSLReviewableTransactions")
+		Post(BaseURL + GetReviewableTransactionsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -306,15 +384,39 @@ func (c *Client) ApproveRequest(id, message, value string) error {
 			"reviewMessage":   message,
 			"reviewValue":     value,
 		}).
-		Post(BaseURL + "/api/OrganizationValidatorSSL/UpdateReviews")
+		Post(BaseURL + UpdateReviewsPath)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (c *Client) Shutdown() error {
-	err := c.scheduler.Shutdown()
+func (c *Client) GetOrganizations() ([]models.Organization, error) {
+	orgs := []models.Organization{}
+	resp, err := c.client.R().
+		SetResult(&orgs).
+		SetHeader("Content-Type", ApplicationJson).
+		ExpectContentType(ApplicationJson).
+		Post(BaseURL + GetOrganizationsPath)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+	}
+	return orgs, nil
+}
+
+func (c *Client) TriggerValidation(organizatonId, email string) error {
+	_, err := c.client.R().
+		SetHeader("Content-Type", ApplicationJson).
+		SetBody(map[string]string{
+			"organizationId":       organizatonId,
+			"usersEmail":           email,
+			"validationMethodName": DnsValidation,
+			"whoisEmail":           "",
+		}).
+		Post(BaseURL + CreatePrevalidaitonPath)
 	if err != nil {
 		return err
 	}
