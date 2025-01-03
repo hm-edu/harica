@@ -5,7 +5,7 @@ go 1.23.3
 require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.4
 	github.com/emersion/go-message v0.18.1
-	github.com/go-co-op/gocron/v2 v2.14.0
+	github.com/go-co-op/gocron/v2 v2.14.1
 	github.com/go-resty/resty/v2 v2.16.2
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/miekg/dns v1.1.62
