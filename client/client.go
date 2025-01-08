@@ -43,12 +43,13 @@ const (
 )
 
 type Client struct {
-	client       *resty.Client
-	currentToken string
-	debug        bool
-	user         string
-	password     string
-	totp         string
+	client          *resty.Client
+	currentToken    string
+	debug           bool
+	user            string
+	password        string
+	totp            string
+	refreshInterval time.Duration
 }
 
 type Domain struct {
@@ -83,8 +84,14 @@ func WithDebug(debug bool) Option {
 	}
 }
 
-func (c *Client) SessionRefresh() {
-	c.prepareClient(c.user, c.password, c.totp)
+func WithRefreshInterval(interval time.Duration) Option {
+	return func(c *Client) {
+		c.refreshInterval = interval
+	}
+}
+
+func (c *Client) SessionRefresh() error {
+	return c.prepareClient(c.user, c.password, c.totp)
 }
 
 func (c *Client) prepareClient(user, password, totpSeed string) error {
@@ -102,7 +109,7 @@ func (c *Client) prepareClient(user, password, totpSeed string) error {
 			return err
 		}
 		slog.Info("Token expires", slog.Time("exp", exp.Time))
-		if exp.Before(time.Now()) {
+		if exp.Before(time.Now()) || exp.Before(time.Now().Add(c.refreshInterval)) {
 			renew = true
 			slog.Info("Token expired or will expire soon, renewing")
 		}
