@@ -53,7 +53,6 @@ var validationCmd = &cobra.Command{
 			slog.Error("Failed to create client:", slog.Any("error", err))
 			return
 		}
-		defer haricaClient.Shutdown() //nolint:errcheck
 
 		orgs, err := haricaClient.GetOrganizations()
 		if err != nil {

@@ -11,7 +11,6 @@ import (
 
 	"log/slog"
 
-	"github.com/go-co-op/gocron/v2"
 	"github.com/go-resty/resty/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/hm-edu/harica/models"
@@ -41,14 +40,15 @@ const (
 
 	ApplicationJson = "application/json"
 	DnsValidation   = "3.2.2.4.7"
-	RefreshInterval = 15 * time.Minute
 )
 
 type Client struct {
 	client       *resty.Client
-	scheduler    gocron.Scheduler
 	currentToken string
 	debug        bool
+	user         string
+	password     string
+	totp         string
 }
 
 type Domain struct {
@@ -74,28 +74,6 @@ func NewClient(user, password, totpSeed string, options ...Option) (*Client, err
 	if err != nil {
 		return nil, err
 	}
-	s, err := gocron.NewScheduler()
-	if err != nil {
-		return nil, err
-	}
-	job, err := s.NewJob(gocron.DurationJob(RefreshInterval), gocron.NewTask(func() {
-		err := c.prepareClient(user, password, totpSeed)
-		if err != nil {
-			slog.Error("failed to prepare client", slog.Any("error", err))
-			return
-		}
-	}))
-	if err != nil {
-		return nil, err
-	}
-	s.Start()
-	refresh, err := job.NextRun()
-	if err != nil {
-		return nil, err
-	}
-	slog.Info("Next refresh token job", slog.Time("next", refresh))
-
-	c.scheduler = s
 	return &c, nil
 }
 
@@ -103,6 +81,10 @@ func WithDebug(debug bool) Option {
 	return func(c *Client) {
 		c.debug = debug
 	}
+}
+
+func (c *Client) SessionRefresh() {
+	c.prepareClient(c.user, c.password, c.totp)
 }
 
 func (c *Client) prepareClient(user, password, totpSeed string) error {
@@ -120,11 +102,14 @@ func (c *Client) prepareClient(user, password, totpSeed string) error {
 			return err
 		}
 		slog.Info("Token expires", slog.Time("exp", exp.Time))
-		if exp.Before(time.Now()) || exp.Before(time.Now().Add(RefreshInterval)) {
+		if exp.Before(time.Now()) {
 			renew = true
 			slog.Info("Token expired or will expire soon, renewing")
 		}
 	}
+	c.user = user
+	c.password = password
+	c.totp = totpSeed
 	if c.client == nil || c.currentToken == "" || renew {
 		if totpSeed != "" {
 			return c.loginTotp(user, password, totpSeed)
@@ -216,14 +201,6 @@ func (c *Client) login(user, password string) error {
 		return err
 	}
 	slog.Info("Token expires", slog.Time("exp", exp.Time))
-	return nil
-}
-
-func (c *Client) Shutdown() error {
-	err := c.scheduler.Shutdown()
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
