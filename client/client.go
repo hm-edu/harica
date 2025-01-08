@@ -112,8 +112,10 @@ func (c *Client) prepareClient(user, password, totpSeed string) error {
 		if err != nil {
 			return err
 		}
+		slog.Info("Token expires", slog.Time("exp", exp.Time))
 		if exp.Before(time.Now()) || exp.Before(time.Now().Add(RefreshInterval)) {
 			renew = true
+			slog.Info("Token expired or will expire soon, renewing")
 		}
 	}
 	if c.client == nil || c.currentToken == "" || renew {
@@ -157,6 +159,7 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 	}
 	r = r.SetHeaderVerbatim("RequestVerificationToken", token).SetDebug(c.debug)
 	c.client = r
+	slog.Info("Logged in with TOTP", slog.String("user", user))
 	return nil
 }
 
@@ -187,6 +190,7 @@ func (c *Client) login(user, password string) error {
 	}
 	r = r.SetHeaderVerbatim("RequestVerificationToken", token).SetDebug(c.debug)
 	c.client = r
+	slog.Info("Logged in without TOTP", slog.String("user", user))
 	return nil
 }
 
