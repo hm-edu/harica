@@ -78,7 +78,7 @@ func NewClient(user, password, totpSeed string, options ...Option) (*Client, err
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.NewJob(gocron.DurationJob(RefreshInterval), gocron.NewTask(func() {
+	job, err := s.NewJob(gocron.DurationJob(RefreshInterval), gocron.NewTask(func() {
 		err := c.prepareClient(user, password, totpSeed)
 		if err != nil {
 			slog.Error("failed to prepare client", slog.Any("error", err))
@@ -89,6 +89,12 @@ func NewClient(user, password, totpSeed string, options ...Option) (*Client, err
 		return nil, err
 	}
 	s.Start()
+	refresh, err := job.NextRun()
+	if err != nil {
+		return nil, err
+	}
+	slog.Info("Next refresh token job", slog.Time("next", refresh))
+
 	c.scheduler = s
 	return &c, nil
 }
@@ -101,8 +107,9 @@ func WithDebug(debug bool) Option {
 
 func (c *Client) prepareClient(user, password, totpSeed string) error {
 	renew := false
-
+	slog.Info("Preparing client")
 	if c.currentToken != "" {
+		slog.Info("Token exists, checking expiration")
 		// Check JWT
 		token, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
 		if err != nil {
@@ -160,6 +167,15 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 	r = r.SetHeaderVerbatim("RequestVerificationToken", token).SetDebug(c.debug)
 	c.client = r
 	slog.Info("Logged in with TOTP", slog.String("user", user))
+	jwt, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
+	if err != nil {
+		return err
+	}
+	exp, err := jwt.Claims.GetExpirationTime()
+	if err != nil {
+		return err
+	}
+	slog.Info("Token expires", slog.Time("exp", exp.Time))
 	return nil
 }
 
@@ -191,6 +207,15 @@ func (c *Client) login(user, password string) error {
 	r = r.SetHeaderVerbatim("RequestVerificationToken", token).SetDebug(c.debug)
 	c.client = r
 	slog.Info("Logged in without TOTP", slog.String("user", user))
+	jwt, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
+	if err != nil {
+		return err
+	}
+	exp, err := jwt.Claims.GetExpirationTime()
+	if err != nil {
+		return err
+	}
+	slog.Info("Token expires", slog.Time("exp", exp.Time))
 	return nil
 }
 
