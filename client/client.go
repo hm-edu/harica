@@ -71,7 +71,7 @@ func NewClient(user, password, totpSeed string, options ...Option) (*Client, err
 	for _, option := range options {
 		option(&c)
 	}
-	err := c.prepareClient(user, password, totpSeed)
+	err := c.prepareClient(user, password, totpSeed, false)
 	if err != nil {
 		return nil, err
 	}
@@ -90,11 +90,11 @@ func WithRefreshInterval(interval time.Duration) Option {
 	}
 }
 
-func (c *Client) SessionRefresh() error {
-	return c.prepareClient(c.user, c.password, c.totp)
+func (c *Client) SessionRefresh(force bool) error {
+	return c.prepareClient(c.user, c.password, c.totp, force)
 }
 
-func (c *Client) prepareClient(user, password, totpSeed string) error {
+func (c *Client) prepareClient(user, password, totpSeed string, force bool) error {
 	renew := false
 	slog.Info("Preparing client")
 	if c.currentToken != "" {
@@ -117,7 +117,7 @@ func (c *Client) prepareClient(user, password, totpSeed string) error {
 	c.user = user
 	c.password = password
 	c.totp = totpSeed
-	if c.client == nil || c.currentToken == "" || renew {
+	if c.client == nil || c.currentToken == "" || renew || force {
 		if totpSeed != "" {
 			return c.loginTotp(user, password, totpSeed)
 		} else {
