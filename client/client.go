@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"log/slog"
@@ -50,6 +51,7 @@ type Client struct {
 	password        string
 	totp            string
 	refreshInterval time.Duration
+	loginLock       sync.RWMutex
 }
 
 type Domain struct {
@@ -95,6 +97,8 @@ func (c *Client) SessionRefresh(force bool) error {
 }
 
 func (c *Client) prepareClient(user, password, totpSeed string, force bool) error {
+	c.loginLock.Lock()
+	defer c.loginLock.Unlock()
 	renew := false
 	slog.Info("Preparing client")
 	if c.currentToken != "" {
@@ -212,6 +216,8 @@ func (c *Client) login(user, password string) error {
 }
 
 func (c *Client) GetRevocationReasons() ([]models.RevocationReasonsResponse, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
 	var response []models.RevocationReasonsResponse
 	resp, err := c.client.R().
 		ExpectContentType(ApplicationJson).
@@ -228,6 +234,8 @@ func (c *Client) GetRevocationReasons() ([]models.RevocationReasonsResponse, err
 }
 
 func (c *Client) RevokeCertificate(reason models.RevocationReasonsResponse, comment string, transactionId string) error {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
 	_, err := c.client.R().
 		SetHeader("Content-Type", ApplicationJson).
 		SetBody(map[string]interface{}{
@@ -244,6 +252,8 @@ func (c *Client) RevokeCertificate(reason models.RevocationReasonsResponse, comm
 }
 
 func (c *Client) CheckMatchingOrganization(domains []string) ([]models.OrganizationResponse, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
 	var domainDto []Domain
 	for _, domain := range domains {
 		domainDto = append(domainDto, Domain{Domain: domain})
@@ -264,6 +274,8 @@ func (c *Client) CheckMatchingOrganization(domains []string) ([]models.Organizat
 }
 
 func (c *Client) GetCertificate(id string) (*models.CertificateResponse, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
 	var cert models.CertificateResponse
 	resp, err := c.client.R().
 		SetResult(&cert).
@@ -281,6 +293,8 @@ func (c *Client) GetCertificate(id string) (*models.CertificateResponse, error) 
 }
 
 func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
 	domainDto := make([]Domain, 0)
 	for _, domain := range domains {
 		domainDto = append(domainDto, Domain{Domain: domain})
@@ -302,6 +316,8 @@ func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, er
 }
 
 func (c *Client) RequestCertificate(domains []string, csr string, transactionType string, organization models.OrganizationResponse) (*models.CertificateRequestResponse, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
 	var domainDto []Domain
 	for _, domain := range domains {
 		domainDto = append(domainDto, Domain{Domain: domain})
@@ -367,6 +383,8 @@ func (c *Client) RequestCertificate(domains []string, csr string, transactionTyp
 }
 
 func (c *Client) GetPendingReviews() ([]models.ReviewResponse, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
 	var pending []models.ReviewResponse
 	resp, err := c.client.R().
 		SetResult(&pending).
@@ -388,6 +406,8 @@ func (c *Client) GetPendingReviews() ([]models.ReviewResponse, error) {
 }
 
 func (c *Client) ApproveRequest(id, message, value string) error {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
 	_, err := c.client.R().
 		SetHeader("Content-Type", "multipart/form-data").
 		SetMultipartFormData(map[string]string{
@@ -405,6 +425,8 @@ func (c *Client) ApproveRequest(id, message, value string) error {
 }
 
 func (c *Client) GetOrganizations() ([]models.Organization, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
 	orgs := []models.Organization{}
 	resp, err := c.client.R().
 		SetResult(&orgs).
@@ -421,6 +443,8 @@ func (c *Client) GetOrganizations() ([]models.Organization, error) {
 }
 
 func (c *Client) TriggerValidation(organizatonId, email string) error {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
 	_, err := c.client.R().
 		SetHeader("Content-Type", ApplicationJson).
 		SetBody(map[string]string{
