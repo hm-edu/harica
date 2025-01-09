@@ -55,7 +55,8 @@ type Client struct {
 }
 
 type Domain struct {
-	Domain string `json:"domain"`
+	Domain     string `json:"domain"`
+	IncludeWWW bool   `json:"includeWWW,omitempty"`
 }
 
 type Option func(*Client)
@@ -318,9 +319,24 @@ func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, er
 func (c *Client) RequestCertificate(domains []string, csr string, transactionType string, organization models.OrganizationResponse) (*models.CertificateRequestResponse, error) {
 	c.loginLock.RLock()
 	defer c.loginLock.RUnlock()
+
+	// Harica currently does not permit leading "www." in domains and
+	// requires the "includeWWW" option. It's not possible to create a
+	// certificate with only a domain with a leading "www.".
+	domainsMap := make(map[string]bool)
+	for _, domain := range domains {
+		domainsMap[domain] = true
+	}
 	var domainDto []Domain
 	for _, domain := range domains {
-		domainDto = append(domainDto, Domain{Domain: domain})
+		if strings.HasPrefix(domain, "www.") &&
+			domainsMap[strings.TrimPrefix(domain, "www.")] {
+			continue
+		}
+		domainDto = append(domainDto, Domain{
+			Domain:     domain,
+			IncludeWWW: domainsMap["www."+domain],
+		})
 	}
 
 	// Ensure that the CSR is in the correct format so we parse it and transform it again
