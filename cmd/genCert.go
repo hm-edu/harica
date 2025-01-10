@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 
@@ -14,6 +15,7 @@ import (
 type GenCertConfig struct {
 	Domains           []string `mapstructure:"domains"`
 	Csr               string   `mapstructure:"csr"`
+	Stdin             bool     `mapstructure:"stdin"`
 	TransactionType   string   `mapstructure:"transaction_type"`
 	RequesterEmail    string   `mapstructure:"requester_email"`
 	RequesterPassword string   `mapstructure:"requester_password"`
@@ -29,6 +31,7 @@ var (
 	keyMapping    = map[string]string{
 		"domains":             "domains",
 		"csr":                 "csr",
+		"stdin":               "stdin",
 		"transaction-type":    "transaction_type",
 		"requester-email":     "requester_email",
 		"requester-password":  "requester_password",
@@ -89,6 +92,14 @@ var genCertCmd = &cobra.Command{
 		})
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		if genCertConfig.Stdin {
+			x, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				slog.Error("failed to read CSR from stdin", slog.Any("error", err))
+				os.Exit(1)
+			}
+			genCertConfig.Csr = string(x)
+		}
 
 		requester, err := client.NewClient(genCertConfig.RequesterEmail, genCertConfig.RequesterPassword, genCertConfig.RequesterTOTPSeed, client.WithDebug(debug))
 		if err != nil {
@@ -145,6 +156,7 @@ func init() {
 	rootCmd.AddCommand(genCertCmd)
 	genCertCmd.Flags().StringSlice("domains", []string{}, "Domains to request certificate for")
 	genCertCmd.Flags().String("csr", "", "CSR to request certificate with")
+	genCertCmd.Flags().Bool("stdin", false, "Read CSR from stdin")
 	genCertCmd.Flags().StringP("transaction-type", "t", "DV", "Transaction type to request certificate with")
 	genCertCmd.Flags().String("requester-email", "", "Email of requester")
 	genCertCmd.Flags().String("requester-password", "", "Password of requester")
@@ -161,13 +173,16 @@ func init() {
 		}
 	}
 
-	for _, s := range []string{"domains", "csr", "requester-email", "requester-password", "validator-email", "validator-password", "validator-totp-seed"} {
+	for _, s := range []string{"domains", "requester-email", "requester-password", "validator-email", "validator-password", "validator-totp-seed"} {
 		err := genCertCmd.MarkFlagRequired(s)
 		if err != nil {
 			slog.Error("Failed to mark flag required", slog.Any("error", err))
 			os.Exit(1)
 		}
 	}
+
+	genCertCmd.MarkFlagsMutuallyExclusive("csr", "stdin")
+	genCertCmd.MarkFlagsOneRequired("csr", "stdin")
 
 	genCertCmd.Flags().StringVar(&configPath, "config", "", "config file (default is cert-generator.yaml)")
 }
