@@ -5,33 +5,44 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/hm-edu/harica/client"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
 type GenCertConfig struct {
-	Domains           []string `mapstructure:"domains" validate:"required"`
-	Csr               string   `mapstructure:"csr" validate:"required"`
-	TransactionType   string   `mapstructure:"transaction_type" validate:"required"`
-	RequesterEmail    string   `mapstructure:"requester_email" validate:"required"`
-	RequesterPassword string   `mapstructure:"requester_password" validate:"required"`
+	Domains           []string `mapstructure:"domains"`
+	Csr               string   `mapstructure:"csr"`
+	TransactionType   string   `mapstructure:"transaction_type"`
+	RequesterEmail    string   `mapstructure:"requester_email"`
+	RequesterPassword string   `mapstructure:"requester_password"`
 	RequesterTOTPSeed string   `mapstructure:"requester_totp_seed"`
-	ValidatorEmail    string   `mapstructure:"validator_email" validate:"required"`
-	ValidatorPassword string   `mapstructure:"validator_password" validate:"required"`
-	ValidatorTOTPSeed string   `mapstructure:"validator_totp_seed" validate:"required"`
+	ValidatorEmail    string   `mapstructure:"validator_email"`
+	ValidatorPassword string   `mapstructure:"validator_password"`
+	ValidatorTOTPSeed string   `mapstructure:"validator_totp_seed"`
 }
 
 var (
 	genCertConfig GenCertConfig
 	configPath    string
+	keyMapping    = map[string]string{
+		"domains":             "domains",
+		"csr":                 "csr",
+		"transaction-type":    "transaction_type",
+		"requester-email":     "requester_email",
+		"requester-password":  "requester_password",
+		"requester-totp-seed": "requester_totp-seed",
+		"validator-email":     "validator_email",
+		"validator-password":  "validator_password",
+		"validator-totp-seed": "validator_totp_seed",
+	}
 )
 
 // genCertCmd represents the genCert command
 var genCertCmd = &cobra.Command{
 	Use: "gen-cert",
-	Run: func(cmd *cobra.Command, args []string) {
+	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.SetConfigType("yaml")
 		viper.SetConfigName("cert-generator")
 		viper.AddConfigPath("/etc/harica/")  // path to look for the config file in
@@ -48,9 +59,9 @@ var genCertCmd = &cobra.Command{
 				slog.Error("Error reading config file", slog.Any("error", err))
 				os.Exit(1)
 			}
+		} else {
+			slog.Info("Using config file:", slog.Any("config", viper.ConfigFileUsed()))
 		}
-
-		viper.BindPFlags(cmd.Flags())
 
 		// Unmarshal the config into a struct.
 		err := viper.Unmarshal(&genCertConfig)
@@ -58,11 +69,19 @@ var genCertCmd = &cobra.Command{
 			slog.Error("Error reading config file", slog.Any("error", err))
 			os.Exit(1)
 		}
-		validate := validator.New()
-		if err := validate.Struct(&genCertConfig); err != nil {
-			slog.Error(fmt.Sprintf("Missing required attributes: \n%v\n", err))
-			os.Exit(1)
-		}
+
+		cmd.Flags().VisitAll(func(f *pflag.Flag) {
+			if !f.Changed && viper.IsSet(f.Name) {
+				val := viper.Get(f.Name)
+				cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val))
+			} else if v, ok := keyMapping[f.Name]; !f.Changed && ok && viper.IsSet(v) {
+				val := viper.Get(v)
+				cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val))
+			}
+		})
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+
 		requester, err := client.NewClient(genCertConfig.RequesterEmail, genCertConfig.RequesterPassword, genCertConfig.RequesterTOTPSeed, client.WithDebug(debug))
 		if err != nil {
 			slog.Error("failed to create requester client", slog.Any("error", err))
@@ -116,25 +135,27 @@ var genCertCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(genCertCmd)
-	genCertCmd.PersistentFlags().StringSlice("domains", []string{}, "Domains to request certificate for")
-	genCertCmd.PersistentFlags().String("csr", "", "CSR to request certificate with")
-	genCertCmd.PersistentFlags().StringP("transaction-type", "t", "DV", "Transaction type to request certificate with")
-	genCertCmd.PersistentFlags().String("requester-email", "", "Email of requester")
-	genCertCmd.PersistentFlags().String("requester-password", "", "Password of requester")
-	genCertCmd.PersistentFlags().String("requester-totp-seed", "", "TOTP seed of requester")
-	genCertCmd.PersistentFlags().String("validator-email", "", "Email of validator")
-	genCertCmd.PersistentFlags().String("validator-password", "", "Password of validator")
-	genCertCmd.PersistentFlags().String("validator-totp-seed", "", "TOTP seed of validator")
+	genCertCmd.Flags().StringSlice("domains", []string{}, "Domains to request certificate for")
+	genCertCmd.Flags().String("csr", "", "CSR to request certificate with")
+	genCertCmd.Flags().StringP("transaction-type", "t", "DV", "Transaction type to request certificate with")
+	genCertCmd.Flags().String("requester-email", "", "Email of requester")
+	genCertCmd.Flags().String("requester-password", "", "Password of requester")
+	genCertCmd.Flags().String("requester-totp-seed", "", "TOTP seed of requester")
+	genCertCmd.Flags().String("validator-email", "", "Email of validator")
+	genCertCmd.Flags().String("validator-password", "", "Password of validator")
+	genCertCmd.Flags().String("validator-totp-seed", "", "TOTP seed of validator")
 
-	viper.BindPFlag("domains", genCertCmd.PersistentFlags().Lookup("domains"))
-	viper.BindPFlag("csr", genCertCmd.PersistentFlags().Lookup("csr"))
-	viper.BindPFlag("transaction_type", genCertCmd.PersistentFlags().Lookup("transaction-type"))
-	viper.BindPFlag("requester_email", genCertCmd.PersistentFlags().Lookup("requester-email"))
-	viper.BindPFlag("requester_password", genCertCmd.PersistentFlags().Lookup("requester-password"))
-	viper.BindPFlag("requester_totp_seed", genCertCmd.PersistentFlags().Lookup("requester-totp-seed"))
-	viper.BindPFlag("validator_email", genCertCmd.PersistentFlags().Lookup("validator-email"))
-	viper.BindPFlag("validator_password", genCertCmd.PersistentFlags().Lookup("validator-password"))
-	viper.BindPFlag("validator_totp_seed", genCertCmd.PersistentFlags().Lookup("validator-totp-seed"))
+	for k, v := range keyMapping {
+		err := viper.BindPFlag(v, genCertCmd.Flags().Lookup(k))
+		if err != nil {
+			slog.Error("Failed to bind flag", slog.Any("error", err))
+			os.Exit(1)
+		}
+	}
 
-	genCertCmd.PersistentFlags().StringVar(&configPath, "config", "", "config file (default is $HOME/harica/cert-generator.yaml)")
+	for _, s := range []string{"domains", "csr", "requester-email", "requester-password", "validator-email", "validator-password", "validator-totp-seed"} {
+		genCertCmd.MarkFlagRequired(s)
+	}
+
+	genCertCmd.Flags().StringVar(&configPath, "config", "", "config file (default is cert-generator.yaml)")
 }

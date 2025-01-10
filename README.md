@@ -13,6 +13,18 @@
     --csr "-----BEGIN CERTIFICATE REQUEST-----\nfoo-bar\n-----END CERTIFICATE REQUEST-----"
 ```
 
+Beside using arguments you can also create a config file `cert-generator.yaml`:
+
+```yaml
+requester_email: ""
+validator_email: ""
+validator_totp_seed: ""
+requester_totp_seed: ""
+validator_password: ""
+requester_password: ""
+```
+
+
 ## Automatic Domain Validation using AXFR
 
 In case you want to (re)validate several domains using DNS Challenges, you may use this module. To use this module, you must have a DNS server/provider that supports standard AXFR Updates to your zones. Right now, we consider all domains to be revalidated that expire in the next 30 days. Domains with a validity of more than 30 days get ignored by the tool.
