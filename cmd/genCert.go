@@ -101,6 +101,30 @@ var genCertCmd = &cobra.Command{
 			genCertConfig.Csr = string(x)
 		}
 
+		// Extract domains from CSR
+		if len(genCertConfig.Domains) == 0 {
+			slog.Info("--domains empty, reading from CSR")
+			csr, err := client.ParseCSR([]byte(genCertConfig.Csr))
+			if err != nil {
+				slog.Error("failed to parse CSR to extract domains", slog.Any("error", err))
+				os.Exit(1)
+			}
+			dnsnames := csr.DNSNames
+			if csr.Subject.CommonName != "" {
+				var found bool
+				for _, x := range dnsnames {
+					if x == csr.Subject.CommonName {
+						found = true
+						break
+					}
+				}
+				if !found {
+					dnsnames = append(dnsnames, csr.Subject.CommonName)
+				}
+			}
+			genCertConfig.Domains = dnsnames
+		}
+
 		requester, err := client.NewClient(genCertConfig.RequesterEmail, genCertConfig.RequesterPassword, genCertConfig.RequesterTOTPSeed, client.WithDebug(debug))
 		if err != nil {
 			slog.Error("failed to create requester client", slog.Any("error", err))
@@ -173,7 +197,7 @@ func init() {
 		}
 	}
 
-	for _, s := range []string{"domains", "requester-email", "requester-password", "validator-email", "validator-password", "validator-totp-seed"} {
+	for _, s := range []string{"requester-email", "requester-password", "validator-email", "validator-password", "validator-totp-seed"} {
 		err := genCertCmd.MarkFlagRequired(s)
 		if err != nil {
 			slog.Error("Failed to mark flag required", slog.Any("error", err))
