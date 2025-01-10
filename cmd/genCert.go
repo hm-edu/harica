@@ -73,10 +73,18 @@ var genCertCmd = &cobra.Command{
 		cmd.Flags().VisitAll(func(f *pflag.Flag) {
 			if !f.Changed && viper.IsSet(f.Name) {
 				val := viper.Get(f.Name)
-				cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val))
+				err = cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val))
+				if err != nil {
+					slog.Error("Failed to set flag", slog.Any("error", err))
+					os.Exit(1)
+				}
 			} else if v, ok := keyMapping[f.Name]; !f.Changed && ok && viper.IsSet(v) {
 				val := viper.Get(v)
-				cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val))
+				err = cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val))
+				if err != nil {
+					slog.Error("Failed to set flag", slog.Any("error", err))
+					os.Exit(1)
+				}
 			}
 		})
 	},
@@ -154,7 +162,11 @@ func init() {
 	}
 
 	for _, s := range []string{"domains", "csr", "requester-email", "requester-password", "validator-email", "validator-password", "validator-totp-seed"} {
-		genCertCmd.MarkFlagRequired(s)
+		err := genCertCmd.MarkFlagRequired(s)
+		if err != nil {
+			slog.Error("Failed to mark flag required", slog.Any("error", err))
+			os.Exit(1)
+		}
 	}
 
 	genCertCmd.Flags().StringVar(&configPath, "config", "", "config file (default is cert-generator.yaml)")
