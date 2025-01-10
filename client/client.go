@@ -93,6 +93,23 @@ func WithRefreshInterval(interval time.Duration) Option {
 	}
 }
 
+func ParseCSR(csr []byte) (*x509.CertificateRequest, error) {
+	block, _ := pem.Decode([]byte(csr))
+	if block == nil || block.Type != "CERTIFICATE REQUEST" {
+		return nil, errors.New("failed to decode PEM block containing CSR")
+	}
+	csrParsed, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CSR: %v", err)
+	}
+
+	if err := csrParsed.CheckSignature(); err != nil {
+		return nil, fmt.Errorf("CSR signature is invalid: %v", err)
+	}
+
+	return csrParsed, nil
+}
+
 func (c *Client) SessionRefresh(force bool) error {
 	return c.prepareClient(c.user, c.password, c.totp, force)
 }
@@ -340,20 +357,10 @@ func (c *Client) RequestCertificate(domains []string, csr string, transactionTyp
 	}
 
 	// Ensure that the CSR is in the correct format so we parse it and transform it again
-	// Parse the CSR
-	block, _ := pem.Decode([]byte(csr))
-	if block == nil || block.Type != "CERTIFICATE REQUEST" {
-		return nil, errors.New("failed to decode PEM block containing CSR")
-	}
-	csrParsed, err := x509.ParseCertificateRequest(block.Bytes)
+	csrParsed, err := ParseCSR([]byte(csr))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse CSR: %v", err)
+		return nil, err
 	}
-
-	if err := csrParsed.CheckSignature(); err != nil {
-		return nil, fmt.Errorf("CSR signature is invalid: %v", err)
-	}
-
 	// Write the CSR as a PEM encoded string again
 	csr = string(pem.EncodeToMemory(&pem.Block{
 		Type:  "CERTIFICATE REQUEST",
