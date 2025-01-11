@@ -38,6 +38,7 @@ const (
 	CheckMatchingOrganizationPath = "/api/ServerCertificate/CheckMachingOrganization"
 	CheckDomainNamesPath          = "/api/ServerCertificate/CheckDomainNames"
 	RequestServerCertificatePath  = "/api/ServerCertificate/RequestServerCertificate"
+	GetMyTransactionsPath         = "/api/ServerCertificate/GetMyTransactions"
 
 	ApplicationJson = "application/json"
 	DnsValidation   = "3.2.2.4.7"
@@ -289,6 +290,24 @@ func (c *Client) CheckMatchingOrganization(domains []string) ([]models.Organizat
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
 	}
 	return response, nil
+}
+
+func (c *Client) GetMyTransactions() ([]models.TransactionResponse, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
+	var transactions []models.TransactionResponse
+	resp, err := c.client.R().
+		SetResult(&transactions).
+		SetHeader("Content-Type", ApplicationJson).
+		ExpectContentType(ApplicationJson).
+		Post(BaseURL + GetMyTransactionsPath)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+	}
+	return transactions, nil
 }
 
 func (c *Client) GetCertificate(id string) (*models.CertificateResponse, error) {
