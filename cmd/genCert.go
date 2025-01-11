@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/hm-edu/harica/client"
 	"github.com/spf13/cobra"
@@ -167,6 +168,22 @@ var genCertCmd = &cobra.Command{
 				break
 			}
 		}
+
+		transactions, err := requester.GetMyTransactions()
+		if err != nil {
+			slog.Error("failed to get transactions", slog.Any("error", err))
+			os.Exit(1)
+		}
+
+		for _, t := range transactions {
+			if t.TransactionID == transaction.TransactionID {
+				if t.IsHighRisk && strings.EqualFold(t.TransactionStatus, "Pending") {
+					slog.Error("pending transaction is high risk", slog.String("transaction", t.TransactionID))
+					os.Exit(1)
+				}
+			}
+		}
+
 		cert, err := requester.GetCertificate(transaction.TransactionID)
 		if err != nil {
 			slog.Error("failed to get certificate", slog.Any("error", err))
