@@ -36,7 +36,7 @@ var (
 		"transaction-type":    "transaction_type",
 		"requester-email":     "requester_email",
 		"requester-password":  "requester_password",
-		"requester-totp-seed": "requester_totp-seed",
+		"requester-totp-seed": "requester_totp_seed",
 		"validator-email":     "validator_email",
 		"validator-password":  "validator_password",
 		"validator-totp-seed": "validator_totp_seed",
