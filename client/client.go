@@ -69,6 +69,14 @@ func (e *UnexpectedResponseContentTypeError) Error() string {
 	return fmt.Sprintf("unexpected response content type: %s", e.ContentType)
 }
 
+type UnexpectedResponseCodeError struct {
+	Code int
+}
+
+func (e *UnexpectedResponseCodeError) Error() string {
+	return fmt.Sprintf("unexpected response status code: %d", e.Code)
+}
+
 func NewClient(user, password, totpSeed string, options ...Option) (*Client, error) {
 	c := Client{}
 	for _, option := range options {
@@ -167,6 +175,9 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 	if err != nil {
 		return err
 	}
+	if resp.IsError() {
+		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
 	tokenResp := strings.Trim(resp.String(), "\"")
 	_, _, err = jwt.NewParser().ParseUnverified(tokenResp, jwt.MapClaims{})
 	if err != nil {
@@ -207,6 +218,9 @@ func (c *Client) login(user, password string) error {
 	if err != nil {
 		return err
 	}
+	if resp.IsError() {
+		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
 	tokenResp := strings.Trim(resp.String(), "\"")
 	_, _, err = jwt.NewParser().ParseUnverified(tokenResp, jwt.MapClaims{})
 	if err != nil {
@@ -244,6 +258,9 @@ func (c *Client) GetRevocationReasons() ([]models.RevocationReasonsResponse, err
 	if err != nil {
 		return nil, err
 	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
 	}
@@ -254,7 +271,7 @@ func (c *Client) GetRevocationReasons() ([]models.RevocationReasonsResponse, err
 func (c *Client) RevokeCertificate(reason models.RevocationReasonsResponse, comment string, transactionId string) error {
 	c.loginLock.RLock()
 	defer c.loginLock.RUnlock()
-	_, err := c.client.R().
+	resp, err := c.client.R().
 		SetHeader("Content-Type", ApplicationJson).
 		SetBody(map[string]interface{}{
 			"transactionId": transactionId,
@@ -265,6 +282,9 @@ func (c *Client) RevokeCertificate(reason models.RevocationReasonsResponse, comm
 		Post(BaseURL + RevokeCertificatePath)
 	if err != nil {
 		return err
+	}
+	if resp.IsError() {
+		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	return nil
 }
@@ -285,6 +305,9 @@ func (c *Client) CheckMatchingOrganization(domains []string) ([]models.Organizat
 	if err != nil {
 		return nil, err
 	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
 	}
@@ -302,6 +325,9 @@ func (c *Client) GetMyTransactions() ([]models.TransactionResponse, error) {
 		Post(BaseURL + GetMyTransactionsPath)
 	if err != nil {
 		return nil, err
+	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -321,6 +347,9 @@ func (c *Client) GetCertificate(id string) (*models.CertificateResponse, error) 
 		Post(BaseURL + GetCertificatePath)
 	if err != nil {
 		return nil, err
+	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -344,6 +373,9 @@ func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, er
 		Post(BaseURL + CheckDomainNamesPath)
 	if err != nil {
 		return nil, err
+	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -402,6 +434,9 @@ func (c *Client) RequestCertificate(domains []string, csr string, transactionTyp
 	if err != nil {
 		return nil, err
 	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
 	}
@@ -425,6 +460,9 @@ func (c *Client) GetPendingReviews() ([]models.ReviewResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
 	}
@@ -434,7 +472,7 @@ func (c *Client) GetPendingReviews() ([]models.ReviewResponse, error) {
 func (c *Client) ApproveRequest(id, message, value string) error {
 	c.loginLock.RLock()
 	defer c.loginLock.RUnlock()
-	_, err := c.client.R().
+	resp, err := c.client.R().
 		SetHeader("Content-Type", "multipart/form-data").
 		SetMultipartFormData(map[string]string{
 			"reviewId":        id,
@@ -444,6 +482,9 @@ func (c *Client) ApproveRequest(id, message, value string) error {
 			"reviewValue":     value,
 		}).
 		Post(BaseURL + UpdateReviewsPath)
+	if resp.IsError() {
+		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
 	if err != nil {
 		return err
 	}
@@ -462,6 +503,9 @@ func (c *Client) GetOrganizations() ([]models.Organization, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
 	}
@@ -471,7 +515,7 @@ func (c *Client) GetOrganizations() ([]models.Organization, error) {
 func (c *Client) TriggerValidation(organizatonId, email string) error {
 	c.loginLock.RLock()
 	defer c.loginLock.RUnlock()
-	_, err := c.client.R().
+	resp, err := c.client.R().
 		SetHeader("Content-Type", ApplicationJson).
 		SetBody(map[string]string{
 			"organizationId":       organizatonId,
@@ -482,6 +526,9 @@ func (c *Client) TriggerValidation(organizatonId, email string) error {
 		Post(BaseURL + CreatePrevalidaitonPath)
 	if err != nil {
 		return err
+	}
+	if resp.IsError() {
+		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	return nil
 }
