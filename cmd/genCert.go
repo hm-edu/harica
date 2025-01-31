@@ -126,6 +126,7 @@ var genCertCmd = &cobra.Command{
 			genCertConfig.Domains = dnsnames
 		}
 
+		genCertConfig.Csr = strings.ReplaceAll(genCertConfig.Csr, "\\n", "\n")
 		requester, err := client.NewClient(genCertConfig.RequesterEmail, genCertConfig.RequesterPassword, genCertConfig.RequesterTOTPSeed, client.WithDebug(debug))
 		if err != nil {
 			slog.Error("failed to create requester client", slog.Any("error", err))
