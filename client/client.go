@@ -51,6 +51,8 @@ type Client struct {
 	user            string
 	password        string
 	totp            string
+	retryEnabled    bool
+	retry           int
 	refreshInterval time.Duration
 	loginLock       sync.RWMutex
 }
@@ -98,6 +100,13 @@ func WithDebug(debug bool) Option {
 func WithRefreshInterval(interval time.Duration) Option {
 	return func(c *Client) {
 		c.refreshInterval = interval
+	}
+}
+
+func WithRetry(retry int) Option {
+	return func(c *Client) {
+		c.retryEnabled = true
+		c.retry = retry
 	}
 }
 
@@ -200,6 +209,9 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 	if err != nil {
 		return err
 	}
+	if c.retryEnabled {
+		c.client = c.client.SetRetryCount(c.retry)
+	}
 	slog.Info("Token expires", slog.Time("exp", exp.Time))
 	return nil
 }
@@ -242,6 +254,9 @@ func (c *Client) login(user, password string) error {
 	exp, err := jwt.Claims.GetExpirationTime()
 	if err != nil {
 		return err
+	}
+	if c.retryEnabled {
+		c.client = c.client.SetRetryCount(c.retry)
 	}
 	slog.Info("Token expires", slog.Time("exp", exp.Time))
 	return nil
