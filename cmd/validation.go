@@ -42,6 +42,7 @@ var validationCmd = &cobra.Command{
 		dnsProvider, err := axfr.NewDNSProvider(config.dnsConfig)
 		if err != nil {
 			slog.Error("Failed to create dns provider", slog.Any("error", err))
+			return
 		}
 
 		if len(config.domains) > 10 {
