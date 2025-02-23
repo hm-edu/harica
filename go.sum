@@ -8,6 +8,8 @@ github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/emersion/go-imap/v2 v2.0.0-beta.4 h1:BS7+kUVhe/jfuFWgn8li0AbCKBIDoNvqJWsRJppltcc=
 github.com/emersion/go-imap/v2 v2.0.0-beta.4/go.mod h1:BZTFHsS1hmgBkFlHqbxGLXk2hnRqTItUgwjSSCsYNAk=
+github.com/emersion/go-imap/v2 v2.0.0-beta.5 h1:H3858DNmBuXyMK1++YrQIRdpKE1MwBc+ywBtg3n+0wA=
+github.com/emersion/go-imap/v2 v2.0.0-beta.5/go.mod h1:BZTFHsS1hmgBkFlHqbxGLXk2hnRqTItUgwjSSCsYNAk=
 github.com/emersion/go-message v0.18.1 h1:tfTxIoXFSFRwWaZsgnqS1DSZuGpYGzSmCZD8SK3QA2E=
 github.com/emersion/go-message v0.18.1/go.mod h1:XpJyL70LwRvq2a8rVbHXikPgKj8+aI0kGdHlg16ibYA=
 github.com/emersion/go-message v0.18.2 h1:rl55SQdjd9oJcIoQNhubD2Acs1E6IzlZISRTK7x/Lpg=
