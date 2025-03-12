@@ -99,7 +99,7 @@ var validationCmd = &cobra.Command{
 		slog.Info("Validation triggered for domains", slog.Any("domains", validationDomains))
 
 		slog.Info("Waiting for validation codes")
-		validationCodes, err := imap.FetchValidationCodes(config.imapHost, config.imapUsername, config.imapPassword, config.imapPort, validationStart, validationDomains)
+		validationCodes, err := imap.FetchValidationCodes(config.imapHost, config.imapUsername, config.imapPassword, config.imapPort, validationStart, validationDomains, debug)
 		if err != nil {
 			slog.Error("Failed to fetch validation codes:", slog.Any("error", err))
 			return

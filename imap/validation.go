@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -20,10 +21,14 @@ type ValidationCode struct {
 	mailDate time.Time
 }
 
-func FetchValidationCodes(imapHost, imapUsername, imapPassword string, imapPort int, validationStart time.Time, domains []string) (map[string]ValidationCode, error) {
+func FetchValidationCodes(imapHost, imapUsername, imapPassword string, imapPort int, validationStart time.Time, domains []string, debug bool) (map[string]ValidationCode, error) {
 	// Fetch validation codes from IMAP server
 	// Create IMAP client
-	imapClient, err := imapclient.DialTLS(fmt.Sprintf("%s:%v", imapHost, imapPort), nil)
+	options := imapclient.Options{}
+	if debug {
+		options.DebugWriter = os.Stderr
+	}
+	imapClient, err := imapclient.DialTLS(fmt.Sprintf("%s:%v", imapHost, imapPort), &options)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +71,7 @@ func FetchValidationCodes(imapHost, imapUsername, imapPassword string, imapPort 
 				}
 			}
 			for _, p := range m.BodySection {
-				body, err := mail.CreateReader(bytes.NewReader(p))
+				body, err := mail.CreateReader(bytes.NewReader(p.Bytes))
 				if err != nil {
 					return nil, err
 				}
