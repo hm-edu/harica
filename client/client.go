@@ -1,7 +1,9 @@
 package client
 
 import (
+	"bytes"
 	"crypto/x509"
+	"encoding/csv"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -24,8 +26,14 @@ const (
 	LoginPath     = "/api/User/Login"
 	LoginPathTotp = "/api/User/Login2FA"
 
-	CreatePrevalidaitonPath = "/api/OrganizationAdmin/CreatePrevalidatedValidation"
-	GetOrganizationsPath    = "/api/OrganizationAdmin/GetOrganizations"
+	CreatePrevalidaitonPath  = "/api/OrganizationAdmin/CreatePrevalidatedValidation"
+	GetOrganizationsPath     = "/api/OrganizationAdmin/GetOrganizations"
+	GetOrganizationsBulkPath = "/api/OrganizationAdmin/GetOrganizationsBulk"
+
+	CreateBulkCertificatesSMIMEPath  = "/api/OrganizationAdmin/CreateBulkCertificatesSMIME"
+	GetBulkCertificateEntriesPath    = "/api/OrganizationAdmin/GetBulkCertificateEntries"
+	GetBulkCertificatesOfAnEntryPath = "/api/OrganizationAdmin/GetBulkCertificatesOfAnEntry"
+	RevokeBulkCertificatePath        = "/api/OrganizationAdmin/RevokeBulkCertificate"
 
 	UpdateReviewsPath             = "/api/OrganizationValidatorSSL/UpdateReviews"
 	GetReviewableTransactionsPath = "/api/OrganizationValidatorSSL/GetSSLReviewableTransactions"
@@ -55,6 +63,7 @@ type Client struct {
 	retry           int
 	refreshInterval time.Duration
 	loginLock       sync.RWMutex
+	bulkLock        sync.RWMutex
 }
 
 type Domain struct {
@@ -527,6 +536,26 @@ func (c *Client) GetOrganizations() ([]models.Organization, error) {
 	return orgs, nil
 }
 
+func (c *Client) GetOrganizationsBulk() ([]models.Organization, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
+	orgs := []models.Organization{}
+	resp, err := c.client.R().
+		SetResult(&orgs).
+		SetHeader("Content-Type", ApplicationJson).
+		ExpectContentType(ApplicationJson).
+		Post(BaseURL + GetOrganizationsPath)
+	if err != nil {
+		return nil, err
+	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
+	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+	}
+	return orgs, nil
+}
 func (c *Client) TriggerValidation(organizatonId, email string) error {
 	c.loginLock.RLock()
 	defer c.loginLock.RUnlock()
@@ -539,6 +568,168 @@ func (c *Client) TriggerValidation(organizatonId, email string) error {
 			"whoisEmail":           "",
 		}).
 		Post(BaseURL + CreatePrevalidaitonPath)
+	if err != nil {
+		return err
+	}
+	if resp.IsError() {
+		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
+	return nil
+}
+
+func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.SmimeBulkRequest) (*models.SmimeBulkResponse, error) {
+
+	b := new(bytes.Buffer)
+	data := csv.NewWriter(b)
+
+	err := data.Write([]string{
+		"FriendlyName",
+		"Email",
+		"Email2",
+		"Email3",
+		"GivenName",
+		"Surname",
+		"PickupPassword",
+		"CertType",
+		"CSR",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if request.CertType != "email_only" && request.CertType != "natural_legal_lcp" {
+		return nil, errors.New("invalid certificate type")
+	}
+
+	err = data.Write([]string{
+		request.FriendlyName,
+		request.Email,
+		request.Email2,
+		request.Email3,
+		request.GivenName,
+		request.Surname,
+		request.PickupPassword,
+		request.CertType,
+		request.CSR,
+	})
+	if err != nil {
+		return nil, err
+	}
+	data.Flush()
+	c.bulkLock.Lock()
+	defer c.bulkLock.Unlock()
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
+
+	entriesBefore, err := c.GetSmimeBulkCertificateEntries()
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.client.R().
+		SetHeader("Content-Type", "multipart/form-data").
+		SetMultipartFormData(map[string]string{
+			"groupId": groupId,
+		}).
+		SetMultipartField("csv", "bulk.csv", "text/csv", bytes.NewReader(b.Bytes())).
+		Post(BaseURL + CreateBulkCertificatesSMIMEPath)
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Determine the difference ...
+	entriesAfter, err := c.GetSmimeBulkCertificateEntries()
+	if err != nil {
+		return nil, err
+	}
+	var newEntries []models.BulkCertificateListEntry
+	for _, entry := range *entriesAfter {
+		found := false
+		for _, oldEntry := range *entriesBefore {
+			if entry.ID == oldEntry.ID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			newEntries = append(newEntries, entry)
+		}
+	}
+	if len(newEntries) != 1 {
+		return nil, errors.New("unexpected number of new entries")
+	}
+	// Get the single certificate
+	cert, err := c.GetSingleSmimeBulkCertificateEntry(newEntries[0].ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.SmimeBulkResponse{TransactionID: cert.ID, Certificate: cert.Certificate, Pkcs7: cert.Pkcs7}, nil
+}
+
+func (c *Client) GetSmimeBulkCertificateEntries() (*[]models.BulkCertificateListEntry, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
+	var certs []models.BulkCertificateListEntry
+	resp, err := c.client.R().
+		SetResult(&certs).
+		SetHeader("Content-Type", ApplicationJson).
+		ExpectContentType(ApplicationJson).
+		Post(BaseURL + GetBulkCertificateEntriesPath)
+	if err != nil {
+		return nil, err
+	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
+	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+	}
+	return &certs, nil
+}
+
+func (c *Client) GetSingleSmimeBulkCertificateEntry(id string) (*models.BulkCertificateEntry, error) {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
+	var cert []models.BulkCertificateEntry
+	resp, err := c.client.R().
+		SetResult(&cert).
+		SetHeader("Content-Type", ApplicationJson).
+		ExpectContentType(ApplicationJson).
+		SetBody(map[string]interface{}{"id": id}).
+		Post(BaseURL + GetBulkCertificatesOfAnEntryPath)
+	if err != nil {
+		return nil, err
+	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+	}
+	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+	}
+	if len(cert) == 0 {
+		return nil, errors.New("no certificate found")
+	}
+	if len(cert) > 1 {
+		return nil, errors.New("multiple certificates found")
+	}
+
+	return &cert[0], nil
+}
+
+func (c *Client) RevokeSmimeBulkCertificateEntry(transactionId string, comment string, reason string) error {
+	c.loginLock.RLock()
+	defer c.loginLock.RUnlock()
+	resp, err := c.client.R().
+		SetHeader("Content-Type", ApplicationJson).
+		SetBody(map[string]interface{}{
+			"transactionId": transactionId,
+			"reason":        reason,
+			"message":       comment,
+		}).
+		Post(BaseURL + RevokeBulkCertificatePath)
 	if err != nil {
 		return err
 	}
