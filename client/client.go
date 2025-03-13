@@ -582,7 +582,7 @@ func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.Smi
 	b := new(bytes.Buffer)
 	data := csv.NewWriter(b)
 
-	data.Write([]string{
+	err := data.Write([]string{
 		"FriendlyName",
 		"Email",
 		"Email2",
@@ -593,12 +593,15 @@ func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.Smi
 		"CertType",
 		"CSR",
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	if request.CertType != "email_only" && request.CertType != "natural_legal_lcp" {
 		return nil, errors.New("invalid certificate type")
 	}
 
-	data.Write([]string{
+	err = data.Write([]string{
 		request.FriendlyName,
 		request.Email,
 		request.Email2,
@@ -609,6 +612,9 @@ func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.Smi
 		request.CertType,
 		request.CSR,
 	})
+	if err != nil {
+		return nil, err
+	}
 	data.Flush()
 	c.bulkLock.Lock()
 	defer c.bulkLock.Unlock()
