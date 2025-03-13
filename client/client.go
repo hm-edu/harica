@@ -726,7 +726,7 @@ func (c *Client) RevokeSmimeBulkCertificateEntry(transactionId string, comment s
 		SetHeader("Content-Type", ApplicationJson).
 		SetBody(map[string]interface{}{
 			"transactionId": transactionId,
-			"reason":        reason,
+			"name":          reason,
 			"message":       comment,
 		}).
 		Post(BaseURL + RevokeBulkCertificatePath)
