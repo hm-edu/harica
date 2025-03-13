@@ -90,3 +90,57 @@ type TransactionResponse struct {
 	TransactionType       any   `json:"transactionType"`
 	IsPendingP12          any   `json:"isPendingP12"`
 }
+
+type SmimeBulkRequest struct {
+	FriendlyName   string
+	Email          string
+	Email2         string
+	Email3         string
+	GivenName      string
+	Surname        string
+	PickupPassword string
+	CertType       string
+	CSR            string
+}
+
+type SmimeBulkResponse struct {
+	TransactionID string `json:"id"`
+	Certificate   string `json:"certificate"`
+	Pkcs7         string `json:"pkcs7"`
+}
+
+type BulkCertificateListEntry struct {
+	ID         string `json:"id"`
+	EntityID   string `json:"entityId"`
+	CreatedAt  string `json:"createdAt"`
+	CustomTags string `json:"customTags"`
+	UserEmail  string `json:"userEmail"`
+}
+
+type BulkCertificateEntry struct {
+	ID                      string `json:"id"`
+	BulkCertificatesEntryID string `json:"bulkCertificatesEntryId"`
+	StatusName              string `json:"statusName"`
+	FriendlyName            string `json:"friendlyName"`
+	Duration                int    `json:"duration"`
+	CustomTags              any    `json:"customTags"`
+	RevocationMessage       string `json:"revocationMessage"`
+	Pkcs12                  any    `json:"pkcs12"`
+	IssuedAt                string `json:"issuedAt"`
+	ValidFrom               string `json:"validFrom"`
+	ValidTo                 string `json:"validTo"`
+	RevocationCode          string `json:"revocationCode"`
+	IsRevoked               bool   `json:"isRevoked"`
+	RevokedAt               any    `json:"revokedAt"`
+	CommonName              string `json:"commonName"`
+	OrganizationUnit1       string `json:"organizationUnit1"`
+	OrganizationUnit2       string `json:"organizationUnit2"`
+	OrganizationUnit3       string `json:"organizationUnit3"`
+	KeySpec                 string `json:"keySpec"`
+	KeyAlg                  string `json:"keyAlg"`
+	Serial                  string `json:"serial"`
+	Certificate             string `json:"certificate"`
+	Notes                   any    `json:"notes"`
+	RevokedByEmail          any    `json:"revokedByEmail"`
+	Pkcs7                   string `json:"pkcs7"`
+}
