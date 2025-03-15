@@ -11,7 +11,7 @@ require (
 	github.com/pquerna/otp v1.4.0
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
-	github.com/spf13/viper v1.19.0
+	github.com/spf13/viper v1.20.0
 	golang.org/x/net v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -20,6 +20,7 @@ require (
 	github.com/boombuler/barcode v1.0.2 // indirect
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/magiconair/properties v1.8.9 // indirect
