@@ -227,11 +227,11 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 	r = r.SetHeaderVerbatim("RequestVerificationToken", token).SetDebug(c.debug)
 	c.client = r
 	slog.Info("Logged in with TOTP", slog.String("user", user))
-	jwt, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
+	javaWebToken, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
 	if err != nil {
 		return err
 	}
-	exp, err := jwt.Claims.GetExpirationTime()
+	exp, err := javaWebToken.Claims.GetExpirationTime()
 	if err != nil {
 		return err
 	}
@@ -273,11 +273,11 @@ func (c *Client) login(user, password string) error {
 	r = r.SetHeaderVerbatim("RequestVerificationToken", token).SetDebug(c.debug)
 	c.client = r
 	slog.Info("Logged in without TOTP", slog.String("user", user))
-	jwt, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
+	javaWebToken, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
 	if err != nil {
 		return err
 	}
-	exp, err := jwt.Claims.GetExpirationTime()
+	exp, err := javaWebToken.Claims.GetExpirationTime()
 	if err != nil {
 		return err
 	}
