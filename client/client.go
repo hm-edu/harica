@@ -137,7 +137,7 @@ func WithRetry(retry int) Option {
 }
 
 func ParseCSR(csr []byte) (*x509.CertificateRequest, error) {
-	block, _ := pem.Decode([]byte(csr))
+	block, _ := pem.Decode(csr)
 	if block == nil || block.Type != "CERTIFICATE REQUEST" {
 		return nil, errors.New("failed to decode PEM block containing CSR")
 	}
