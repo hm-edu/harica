@@ -21,7 +21,9 @@ import (
 )
 
 const (
-	BaseURL = "https://cm.harica.gr"
+	BaseURLProduction = "https://cm.harica.gr"
+	BaseURLStaging    = "https://cm-stg.harica.gr"
+	BaseURLDevel      = "https://cm-dev.harica.gr"
 
 	LoginPath     = "/api/User/Login"
 	LoginPathTotp = "/api/User/Login2FA"
@@ -53,6 +55,7 @@ const (
 )
 
 type Client struct {
+	BaseURL         string
 	client          *resty.Client
 	currentToken    string
 	debug           bool
@@ -89,7 +92,9 @@ func (e *UnexpectedResponseCodeError) Error() string {
 }
 
 func NewClient(user, password, totpSeed string, options ...Option) (*Client, error) {
-	c := Client{}
+	c := Client{
+		BaseURL: BaseURLProduction, // default to production environment
+	}
 	for _, option := range options {
 		option(&c)
 	}
@@ -98,6 +103,18 @@ func NewClient(user, password, totpSeed string, options ...Option) (*Client, err
 		return nil, err
 	}
 	return &c, nil
+}
+
+func UseProductionEnvironment(c *Client) {
+	c.BaseURL = BaseURLProduction
+}
+
+func UseStagingEnvironment(c *Client) {
+	c.BaseURL = BaseURLStaging
+}
+
+func UseDevelEnvironment(c *Client) {
+	c.BaseURL = BaseURLDevel
 }
 
 func WithDebug(debug bool) Option {
@@ -189,7 +206,7 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 		R().SetHeaderVerbatim("RequestVerificationToken", verificationToken).
 		SetHeader("Content-Type", ApplicationJson).
 		SetBody(map[string]string{"email": user, "password": password, "token": otp}).
-		Post(BaseURL + LoginPathTotp)
+		Post(c.BaseURL + LoginPathTotp)
 	if err != nil {
 		return err
 	}
@@ -235,7 +252,7 @@ func (c *Client) login(user, password string) error {
 		R().SetHeaderVerbatim("RequestVerificationToken", verificationToken).
 		SetHeader("Content-Type", ApplicationJson).
 		SetBody(map[string]string{"email": user, "password": password}).
-		Post(BaseURL + LoginPath)
+		Post(c.BaseURL + LoginPath)
 	if err != nil {
 		return err
 	}
@@ -278,7 +295,7 @@ func (c *Client) GetRevocationReasons() ([]models.RevocationReasonsResponse, err
 	resp, err := c.client.R().
 		ExpectContentType(ApplicationJson).
 		SetResult(&response).
-		Post(BaseURL + RevocationReasonsPath)
+		Post(c.BaseURL + RevocationReasonsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +320,7 @@ func (c *Client) RevokeCertificate(reason models.RevocationReasonsResponse, comm
 			"name":          reason.Name,
 			"message":       "",
 		}).
-		Post(BaseURL + RevokeCertificatePath)
+		Post(c.BaseURL + RevokeCertificatePath)
 	if err != nil {
 		return err
 	}
@@ -325,7 +342,7 @@ func (c *Client) CheckMatchingOrganization(domains []string) ([]models.Organizat
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetResult(&response).SetBody(domainDto).
-		Post(BaseURL + CheckMatchingOrganizationPath)
+		Post(c.BaseURL + CheckMatchingOrganizationPath)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +363,7 @@ func (c *Client) GetMyTransactions() ([]models.TransactionResponse, error) {
 		SetResult(&transactions).
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
-		Post(BaseURL + GetMyTransactionsPath)
+		Post(c.BaseURL + GetMyTransactionsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +385,7 @@ func (c *Client) GetCertificate(id string) (*models.CertificateResponse, error) 
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetBody(map[string]interface{}{"id": id}).
-		Post(BaseURL + GetCertificatePath)
+		Post(c.BaseURL + GetCertificatePath)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +411,7 @@ func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, er
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetBody(domainDto).
-		Post(BaseURL + CheckDomainNamesPath)
+		Post(c.BaseURL + CheckDomainNamesPath)
 	if err != nil {
 		return nil, err
 	}
@@ -454,7 +471,7 @@ func (c *Client) RequestCertificate(domains []string, csr string, transactionTyp
 		SetResult(&result).
 		ExpectContentType(ApplicationJson).
 		SetMultipartFormData(body).
-		Post(BaseURL + RequestServerCertificatePath)
+		Post(c.BaseURL + RequestServerCertificatePath)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +497,7 @@ func (c *Client) GetPendingReviews() ([]models.ReviewResponse, error) {
 			Status:         "Pending",
 			FilterPostDTOs: []any{},
 		}).
-		Post(BaseURL + GetReviewableTransactionsPath)
+		Post(c.BaseURL + GetReviewableTransactionsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -505,7 +522,7 @@ func (c *Client) ApproveRequest(id, message, value string) error {
 			"reviewMessage":   message,
 			"reviewValue":     value,
 		}).
-		Post(BaseURL + UpdateReviewsPath)
+		Post(c.BaseURL + UpdateReviewsPath)
 	if resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
@@ -523,7 +540,7 @@ func (c *Client) GetOrganizations() ([]models.Organization, error) {
 		SetResult(&orgs).
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
-		Post(BaseURL + GetOrganizationsPath)
+		Post(c.BaseURL + GetOrganizationsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -544,7 +561,7 @@ func (c *Client) GetOrganizationsBulk() ([]models.Organization, error) {
 		SetResult(&orgs).
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
-		Post(BaseURL + GetOrganizationsPath)
+		Post(c.BaseURL + GetOrganizationsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -567,7 +584,7 @@ func (c *Client) TriggerValidation(organizatonId, email string) error {
 			"validationMethodName": DnsValidation,
 			"whoisEmail":           "",
 		}).
-		Post(BaseURL + CreatePrevalidaitonPath)
+		Post(c.BaseURL + CreatePrevalidaitonPath)
 	if err != nil {
 		return err
 	}
@@ -632,7 +649,7 @@ func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.Smi
 			"groupId": groupId,
 		}).
 		SetMultipartField("csv", "bulk.csv", "text/csv", bytes.NewReader(b.Bytes())).
-		Post(BaseURL + CreateBulkCertificatesSMIMEPath)
+		Post(c.BaseURL + CreateBulkCertificatesSMIMEPath)
 	if resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
@@ -677,7 +694,7 @@ func (c *Client) GetSmimeBulkCertificateEntries() (*[]models.BulkCertificateList
 		SetResult(&certs).
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
-		Post(BaseURL + GetBulkCertificateEntriesPath)
+		Post(c.BaseURL + GetBulkCertificateEntriesPath)
 	if err != nil {
 		return nil, err
 	}
@@ -699,7 +716,7 @@ func (c *Client) GetSingleSmimeBulkCertificateEntry(id string) (*models.BulkCert
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetBody(map[string]interface{}{"id": id}).
-		Post(BaseURL + GetBulkCertificatesOfAnEntryPath)
+		Post(c.BaseURL + GetBulkCertificatesOfAnEntryPath)
 	if err != nil {
 		return nil, err
 	}
@@ -729,7 +746,7 @@ func (c *Client) RevokeSmimeBulkCertificateEntry(transactionId string, comment s
 			"name":          reason,
 			"message":       comment,
 		}).
-		Post(BaseURL + RevokeBulkCertificatePath)
+		Post(c.BaseURL + RevokeBulkCertificatePath)
 	if err != nil {
 		return err
 	}
