@@ -7,7 +7,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-func getVerificationToken(r *resty.Client) (string, error) {
+func getVerificationToken(r *resty.Client, BaseURL string) (string, error) {
 	resp, err := r.
 		R().
 		Get(BaseURL)
