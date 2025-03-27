@@ -21,7 +21,7 @@ type ValidationCode struct {
 	mailDate time.Time
 }
 
-func FetchValidationCodes(imapHost, imapUsername, imapPassword string, imapPort int, validationStart time.Time, domains []string, debug bool) (map[string]ValidationCode, error) {
+func FetchValidationCodes(imapHost, imapUsername, imapPassword string, imapPort int, validationStart time.Time, domains []string, debug bool, graceDelta int) (map[string]ValidationCode, error) {
 	// Fetch validation codes from IMAP server
 	// Create IMAP client
 	options := imapclient.Options{}
@@ -51,7 +51,11 @@ func FetchValidationCodes(imapHost, imapUsername, imapPassword string, imapPort 
 		if err != nil {
 			return nil, err
 		}
-
+		if len(mails.AllSeqNums()) == 0 {
+			slog.Info("No emails found, waiting for emails")
+			time.Sleep(5 * time.Second)
+			continue
+		}
 		fetchOptions := &imap.FetchOptions{
 			Flags:       true,
 			Envelope:    true,
@@ -65,8 +69,9 @@ func FetchValidationCodes(imapHost, imapUsername, imapPassword string, imapPort 
 		for _, m := range msg {
 			if m.Envelope.Date.Before(validationStart) && m.Envelope.Date != validationStart {
 				delta := validationStart.Sub(m.Envelope.Date)
-				if delta.Abs().Milliseconds() > 1000 {
-					slog.Info("Ignoring email", slog.Time("date", m.Envelope.Date), slog.Time("validationStart", validationStart))
+				deltaSeconds := delta.Abs().Seconds()
+				if deltaSeconds > float64(graceDelta) {
+					slog.Info("Ignoring email", slog.Time("date", m.Envelope.Date), slog.Time("validationStart", validationStart), slog.Float64("deltaSeconds", deltaSeconds), slog.Int("graceDelta", graceDelta))
 					continue
 				}
 			}
@@ -91,16 +96,17 @@ func FetchValidationCodes(imapHost, imapUsername, imapPassword string, imapPort 
 								if len(validationRegex.FindStringSubmatch(line)) > 0 {
 									matches := validationRegex.FindStringSubmatch(line)
 									domain := strings.TrimSpace(matches[1])
+									domain = strings.Trim(domain, ".")
 									if !slices.Contains(domains, domain) && len(domains) != 0 {
 										continue
 									}
 									if x, ok := validationCodes[domain]; !ok {
-										validationCodes[matches[1]] = ValidationCode{
+										validationCodes[domain] = ValidationCode{
 											Code:     matches[2],
 											mailDate: m.Envelope.Date,
 										}
 									} else if x.mailDate.Before(m.Envelope.Date) {
-										validationCodes[matches[1]] = ValidationCode{
+										validationCodes[domain] = ValidationCode{
 											Code:     matches[2],
 											mailDate: m.Envelope.Date,
 										}
