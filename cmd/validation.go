@@ -29,6 +29,7 @@ type ValidationConfig struct {
 	email        string
 	dnsConfig    string
 	domains      []string
+	graceDelta   int
 }
 
 var (
@@ -70,10 +71,6 @@ var validationCmd = &cobra.Command{
 
 		for _, org := range orgs {
 			if slices.Contains(config.domains, org.Domain) || len(config.domains) == 0 {
-				if d, err := time.Parse("2006-01-02T15:04:05", org.Validity); err == nil && d.After(time.Now().Add(30*24*time.Hour)) {
-					slog.Warn("Domain is already validated", slog.String("domain", org.Domain))
-					continue
-				}
 				slog.Info("Triggering validation for domain", slog.String("domain", org.Domain))
 				err = haricaClient.TriggerValidation(org.OrganizationID, config.email)
 				if err != nil {
@@ -99,7 +96,7 @@ var validationCmd = &cobra.Command{
 		slog.Info("Validation triggered for domains", slog.Any("domains", validationDomains))
 
 		slog.Info("Waiting for validation codes")
-		validationCodes, err := imap.FetchValidationCodes(config.imapHost, config.imapUsername, config.imapPassword, config.imapPort, validationStart, validationDomains, debug)
+		validationCodes, err := imap.FetchValidationCodes(config.imapHost, config.imapUsername, config.imapPassword, config.imapPort, validationStart, validationDomains, debug, config.graceDelta)
 		if err != nil {
 			slog.Error("Failed to fetch validation codes:", slog.Any("error", err))
 			return
@@ -209,6 +206,8 @@ func init() {
 
 	validationCmd.Flags().StringVar(&config.dnsConfig, "dns", "", "Path to dns config")
 	validationCmd.MarkFlagRequired("dns") //nolint:errcheck
+
+	validationCmd.Flags().IntVar(&config.graceDelta, "grace-delta", 1, "Grace period delta in seconds")
 
 	rootCmd.AddCommand(validationCmd)
 
