@@ -129,11 +129,11 @@ func (r *DNSProvider) sendMessage(domain string, msg *dns.Msg) error {
 		c.Net = "tcp"
 	}
 	resp, _, err := c.Exchange(msg, cfg.Nameserver)
-	if resp == nil {
-		return fmt.Errorf("no response received")
-	}
 	if err != nil {
 		return err
+	}
+	if resp == nil {
+		return fmt.Errorf("no response received")
 	}
 	if resp.Rcode != dns.RcodeSuccess {
 		return fmt.Errorf("bad return code: %s", dns.RcodeToString[resp.Rcode])
