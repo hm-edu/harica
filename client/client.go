@@ -21,7 +21,9 @@ import (
 )
 
 const (
-	BaseURL = "https://cm.harica.gr"
+	BaseURLProduction = "https://cm.harica.gr"
+	BaseURLStaging    = "https://cm-stg.harica.gr"
+	BaseURLDevel      = "https://cm-dev.harica.gr"
 
 	LoginPath     = "/api/User/Login"
 	LoginPathTotp = "/api/User/Login2FA"
@@ -53,6 +55,7 @@ const (
 )
 
 type Client struct {
+	baseURL         string
 	client          *resty.Client
 	currentToken    string
 	debug           bool
@@ -89,7 +92,9 @@ func (e *UnexpectedResponseCodeError) Error() string {
 }
 
 func NewClient(user, password, totpSeed string, options ...Option) (*Client, error) {
-	c := Client{}
+	c := Client{
+		baseURL: BaseURLProduction, // default to production environment
+	}
 	for _, option := range options {
 		option(&c)
 	}
@@ -98,6 +103,24 @@ func NewClient(user, password, totpSeed string, options ...Option) (*Client, err
 		return nil, err
 	}
 	return &c, nil
+}
+
+func WithProductionEnvironment() Option {
+	return func(c *Client) {
+		c.baseURL = BaseURLProduction
+	}
+}
+
+func WithStagingEnvironment(c *Client) Option {
+	return func(c *Client) {
+		c.baseURL = BaseURLStaging
+	}
+}
+
+func WithDevelEnvironment() Option {
+	return func(c *Client) {
+		c.baseURL = BaseURLDevel
+	}
 }
 
 func WithDebug(debug bool) Option {
@@ -120,7 +143,7 @@ func WithRetry(retry int) Option {
 }
 
 func ParseCSR(csr []byte) (*x509.CertificateRequest, error) {
-	block, _ := pem.Decode([]byte(csr))
+	block, _ := pem.Decode(csr)
 	if block == nil || block.Type != "CERTIFICATE REQUEST" {
 		return nil, errors.New("failed to decode PEM block containing CSR")
 	}
@@ -177,7 +200,7 @@ func (c *Client) prepareClient(user, password, totpSeed string, force bool) erro
 
 func (c *Client) loginTotp(user, password, totpSeed string) error {
 	r := resty.New()
-	verificationToken, err := getVerificationToken(r)
+	verificationToken, err := getVerificationToken(r, c.baseURL)
 	if err != nil {
 		return err
 	}
@@ -189,7 +212,7 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 		R().SetHeaderVerbatim("RequestVerificationToken", verificationToken).
 		SetHeader("Content-Type", ApplicationJson).
 		SetBody(map[string]string{"email": user, "password": password, "token": otp}).
-		Post(BaseURL + LoginPathTotp)
+		Post(c.baseURL + LoginPathTotp)
 	if err != nil {
 		return err
 	}
@@ -203,18 +226,18 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 	}
 	c.currentToken = tokenResp
 	r = r.SetHeaders(map[string]string{"Authorization": c.currentToken})
-	token, err := getVerificationToken(r)
+	token, err := getVerificationToken(r, c.baseURL)
 	if err != nil {
 		return err
 	}
 	r = r.SetHeaderVerbatim("RequestVerificationToken", token).SetDebug(c.debug)
 	c.client = r
 	slog.Info("Logged in with TOTP", slog.String("user", user))
-	jwt, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
+	javaWebToken, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
 	if err != nil {
 		return err
 	}
-	exp, err := jwt.Claims.GetExpirationTime()
+	exp, err := javaWebToken.Claims.GetExpirationTime()
 	if err != nil {
 		return err
 	}
@@ -227,7 +250,7 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 
 func (c *Client) login(user, password string) error {
 	r := resty.New()
-	verificationToken, err := getVerificationToken(r)
+	verificationToken, err := getVerificationToken(r, c.baseURL)
 	if err != nil {
 		return err
 	}
@@ -235,7 +258,7 @@ func (c *Client) login(user, password string) error {
 		R().SetHeaderVerbatim("RequestVerificationToken", verificationToken).
 		SetHeader("Content-Type", ApplicationJson).
 		SetBody(map[string]string{"email": user, "password": password}).
-		Post(BaseURL + LoginPath)
+		Post(c.baseURL + LoginPath)
 	if err != nil {
 		return err
 	}
@@ -249,18 +272,18 @@ func (c *Client) login(user, password string) error {
 	}
 	c.currentToken = tokenResp
 	r = r.SetHeaders(map[string]string{"Authorization": c.currentToken})
-	token, err := getVerificationToken(r)
+	token, err := getVerificationToken(r, c.baseURL)
 	if err != nil {
 		return err
 	}
 	r = r.SetHeaderVerbatim("RequestVerificationToken", token).SetDebug(c.debug)
 	c.client = r
 	slog.Info("Logged in without TOTP", slog.String("user", user))
-	jwt, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
+	javaWebToken, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
 	if err != nil {
 		return err
 	}
-	exp, err := jwt.Claims.GetExpirationTime()
+	exp, err := javaWebToken.Claims.GetExpirationTime()
 	if err != nil {
 		return err
 	}
@@ -278,7 +301,7 @@ func (c *Client) GetRevocationReasons() ([]models.RevocationReasonsResponse, err
 	resp, err := c.client.R().
 		ExpectContentType(ApplicationJson).
 		SetResult(&response).
-		Post(BaseURL + RevocationReasonsPath)
+		Post(c.baseURL + RevocationReasonsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +326,7 @@ func (c *Client) RevokeCertificate(reason models.RevocationReasonsResponse, comm
 			"name":          reason.Name,
 			"message":       "",
 		}).
-		Post(BaseURL + RevokeCertificatePath)
+		Post(c.baseURL + RevokeCertificatePath)
 	if err != nil {
 		return err
 	}
@@ -325,7 +348,7 @@ func (c *Client) CheckMatchingOrganization(domains []string) ([]models.Organizat
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetResult(&response).SetBody(domainDto).
-		Post(BaseURL + CheckMatchingOrganizationPath)
+		Post(c.baseURL + CheckMatchingOrganizationPath)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +369,7 @@ func (c *Client) GetMyTransactions() ([]models.TransactionResponse, error) {
 		SetResult(&transactions).
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
-		Post(BaseURL + GetMyTransactionsPath)
+		Post(c.baseURL + GetMyTransactionsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +391,7 @@ func (c *Client) GetCertificate(id string) (*models.CertificateResponse, error) 
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetBody(map[string]interface{}{"id": id}).
-		Post(BaseURL + GetCertificatePath)
+		Post(c.baseURL + GetCertificatePath)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +417,7 @@ func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, er
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetBody(domainDto).
-		Post(BaseURL + CheckDomainNamesPath)
+		Post(c.baseURL + CheckDomainNamesPath)
 	if err != nil {
 		return nil, err
 	}
@@ -454,7 +477,7 @@ func (c *Client) RequestCertificate(domains []string, csr string, transactionTyp
 		SetResult(&result).
 		ExpectContentType(ApplicationJson).
 		SetMultipartFormData(body).
-		Post(BaseURL + RequestServerCertificatePath)
+		Post(c.baseURL + RequestServerCertificatePath)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +503,7 @@ func (c *Client) GetPendingReviews() ([]models.ReviewResponse, error) {
 			Status:         "Pending",
 			FilterPostDTOs: []any{},
 		}).
-		Post(BaseURL + GetReviewableTransactionsPath)
+		Post(c.baseURL + GetReviewableTransactionsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -505,7 +528,7 @@ func (c *Client) ApproveRequest(id, message, value string) error {
 			"reviewMessage":   message,
 			"reviewValue":     value,
 		}).
-		Post(BaseURL + UpdateReviewsPath)
+		Post(c.baseURL + UpdateReviewsPath)
 	if resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
@@ -523,7 +546,7 @@ func (c *Client) GetOrganizations() ([]models.Organization, error) {
 		SetResult(&orgs).
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
-		Post(BaseURL + GetOrganizationsPath)
+		Post(c.baseURL + GetOrganizationsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -544,7 +567,7 @@ func (c *Client) GetOrganizationsBulk() ([]models.Organization, error) {
 		SetResult(&orgs).
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
-		Post(BaseURL + GetOrganizationsPath)
+		Post(c.baseURL + GetOrganizationsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -567,7 +590,7 @@ func (c *Client) TriggerValidation(organizatonId, email string) error {
 			"validationMethodName": DnsValidation,
 			"whoisEmail":           "",
 		}).
-		Post(BaseURL + CreatePrevalidaitonPath)
+		Post(c.baseURL + CreatePrevalidaitonPath)
 	if err != nil {
 		return err
 	}
@@ -632,7 +655,7 @@ func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.Smi
 			"groupId": groupId,
 		}).
 		SetMultipartField("csv", "bulk.csv", "text/csv", bytes.NewReader(b.Bytes())).
-		Post(BaseURL + CreateBulkCertificatesSMIMEPath)
+		Post(c.baseURL + CreateBulkCertificatesSMIMEPath)
 	if resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
@@ -677,7 +700,7 @@ func (c *Client) GetSmimeBulkCertificateEntries() (*[]models.BulkCertificateList
 		SetResult(&certs).
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
-		Post(BaseURL + GetBulkCertificateEntriesPath)
+		Post(c.baseURL + GetBulkCertificateEntriesPath)
 	if err != nil {
 		return nil, err
 	}
@@ -699,7 +722,7 @@ func (c *Client) GetSingleSmimeBulkCertificateEntry(id string) (*models.BulkCert
 		SetHeader("Content-Type", ApplicationJson).
 		ExpectContentType(ApplicationJson).
 		SetBody(map[string]interface{}{"id": id}).
-		Post(BaseURL + GetBulkCertificatesOfAnEntryPath)
+		Post(c.baseURL + GetBulkCertificatesOfAnEntryPath)
 	if err != nil {
 		return nil, err
 	}
@@ -729,7 +752,7 @@ func (c *Client) RevokeSmimeBulkCertificateEntry(transactionId string, comment s
 			"name":          reason,
 			"message":       comment,
 		}).
-		Post(BaseURL + RevokeBulkCertificatePath)
+		Post(c.baseURL + RevokeBulkCertificatePath)
 	if err != nil {
 		return err
 	}
