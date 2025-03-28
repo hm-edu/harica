@@ -105,16 +105,22 @@ func NewClient(user, password, totpSeed string, options ...Option) (*Client, err
 	return &c, nil
 }
 
-func UseProductionEnvironment(c *Client) {
-	c.baseURL = BaseURLProduction
+func WithProductionEnvironment() Option {
+	return func(c *Client) {
+		c.baseURL = BaseURLProduction
+	}
 }
 
-func UseStagingEnvironment(c *Client) {
-	c.baseURL = BaseURLStaging
+func WithStagingEnvironment(c *Client) Option {
+	return func(c *Client) {
+		c.baseURL = BaseURLStaging
+	}
 }
 
-func UseDevelEnvironment(c *Client) {
-	c.baseURL = BaseURLDevel
+func WithDevelEnvironment() Option {
+	return func(c *Client) {
+		c.baseURL = BaseURLDevel
+	}
 }
 
 func WithDebug(debug bool) Option {
