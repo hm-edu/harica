@@ -94,6 +94,11 @@ func (r *DNSProvider) matchingProvider(domain string) (*ProviderConfig, error) {
 	matchingConfig = nil
 	for _, config := range r.Configs {
 
+		if config.BaseDomain == "" {
+			matchingConfig = &config
+			continue
+		}
+
 		if strings.HasSuffix(dns.Fqdn(domain), fmt.Sprintf(".%s", dns.Fqdn(config.BaseDomain))) || dns.Fqdn(domain) == dns.Fqdn(config.BaseDomain) {
 			if matchingConfig == nil {
 				matchingConfig = &config
