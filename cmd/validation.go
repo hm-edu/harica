@@ -71,6 +71,10 @@ var validationCmd = &cobra.Command{
 
 		for _, org := range orgs {
 			if slices.Contains(config.domains, org.Domain) || len(config.domains) == 0 {
+				if d, err := time.Parse("2006-01-02T15:04:05", org.Validity); err == nil && d.After(time.Now().Add(30*24*time.Hour)) {
+					slog.Warn("Domain is already validated", slog.String("domain", org.Domain))
+					continue
+				}
 				slog.Info("Triggering validation for domain", slog.String("domain", org.Domain))
 				err = haricaClient.TriggerValidation(org.OrganizationID, config.email)
 				if err != nil {
