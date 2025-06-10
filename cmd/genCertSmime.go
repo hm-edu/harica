@@ -19,9 +19,6 @@ type GenCertSmimeConfig struct {
 	RequesterEmail    string `mapstructure:"requester_email"`
 	RequesterPassword string `mapstructure:"requester_password"`
 	RequesterTOTPSeed string `mapstructure:"requester_totp_seed"`
-	ValidatorEmail    string `mapstructure:"validator_email"`
-	ValidatorPassword string `mapstructure:"validator_password"`
-	ValidatorTOTPSeed string `mapstructure:"validator_totp_seed"`
 	//SMIME
 	Email        string `mapstructure:"email"`
 	FriendlyName string `mapstructure:"friendly_name"`
@@ -38,9 +35,6 @@ var (
 		"requester-email":     "requester_email",
 		"requester-password":  "requester_password",
 		"requester-totp-seed": "requester_totp_seed",
-		"validator-email":     "validator_email",
-		"validator-password":  "validator_password",
-		"validator-totp-seed": "validator_totp_seed",
 		"email":               "email",
 		"friendly-name":       "friendly_name",
 		"given-name":          "given_name",
@@ -160,9 +154,6 @@ func init() {
 	genCertSmimeCmd.Flags().String("requester-email", "", "Email of requester")
 	genCertSmimeCmd.Flags().String("requester-password", "", "Password of requester")
 	genCertSmimeCmd.Flags().String("requester-totp-seed", "", "TOTP seed of requester")
-	genCertSmimeCmd.Flags().String("validator-email", "", "Email of validator")
-	genCertSmimeCmd.Flags().String("validator-password", "", "Password of validator")
-	genCertSmimeCmd.Flags().String("validator-totp-seed", "", "TOTP seed of validator")
 	genCertSmimeCmd.Flags().StringVar(&configPathSmime, "config", "", "config file (default is cert-generator.yaml)")
 	// SMIME
 	genCertSmimeCmd.Flags().StringP("cert-type", "t", "email_only", "Requested certificate cert type.")
@@ -178,7 +169,7 @@ func init() {
 		}
 	}
 
-	for _, s := range []string{"requester-email", "requester-password", "validator-email", "validator-password", "validator-totp-seed"} {
+	for _, s := range []string{"requester-email", "requester-password", "requester-totp-seed"} {
 		err := genCertSmimeCmd.MarkFlagRequired(s)
 		if err != nil {
 			slog.Error("Failed to mark flag required", slog.Any("error", err))
