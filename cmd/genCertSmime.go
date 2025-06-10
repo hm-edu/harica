@@ -125,8 +125,7 @@ var genCertSmimeCmd = &cobra.Command{
 		// build fake bulk request with sinlge user
 		// it looks like the API still does not fully support requesting a single SMIME certificate
 		// the request endpoint exists but no review/validation endpoint - atleast missing in API description
-		var smimeBulk models.SmimeBulkRequest
-		smimeBulk = models.SmimeBulkRequest{
+		var smimeBulk = models.SmimeBulkRequest{
 			FriendlyName:   genCertSmimeConfig.FriendlyName,
 			Email:          genCertSmimeConfig.Email,
 			Email2:         "",
