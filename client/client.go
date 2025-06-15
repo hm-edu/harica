@@ -217,7 +217,7 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 	if err != nil {
 		return err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	tokenResp := strings.Trim(resp.String(), "\"")
@@ -263,7 +263,7 @@ func (c *Client) login(user, password string) error {
 	if err != nil {
 		return err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	tokenResp := strings.Trim(resp.String(), "\"")
@@ -306,7 +306,7 @@ func (c *Client) GetRevocationReasons() ([]models.RevocationReasonsResponse, err
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -331,7 +331,7 @@ func (c *Client) RevokeCertificate(reason models.RevocationReasonsResponse, comm
 	if err != nil {
 		return err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	return nil
@@ -353,7 +353,7 @@ func (c *Client) CheckMatchingOrganization(domains []string) ([]models.Organizat
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -374,7 +374,7 @@ func (c *Client) GetMyTransactions() ([]models.TransactionResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -396,7 +396,7 @@ func (c *Client) GetCertificate(id string) (*models.CertificateResponse, error) 
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -422,7 +422,7 @@ func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, er
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -482,7 +482,7 @@ func (c *Client) RequestCertificate(domains []string, csr string, transactionTyp
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -508,7 +508,7 @@ func (c *Client) GetPendingReviews() ([]models.ReviewResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -530,7 +530,7 @@ func (c *Client) ApproveRequest(id, message, value string) error {
 			"reviewValue":     value,
 		}).
 		Post(c.baseURL + UpdateReviewsPath)
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	if err != nil {
@@ -551,7 +551,7 @@ func (c *Client) GetOrganizations() ([]models.Organization, error) {
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -572,7 +572,7 @@ func (c *Client) GetOrganizationsBulk() ([]models.Organization, error) {
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -595,7 +595,7 @@ func (c *Client) TriggerValidation(organizatonId, email string) error {
 	if err != nil {
 		return err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	return nil
@@ -657,7 +657,7 @@ func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.Smi
 		}).
 		SetMultipartField("csv", "bulk.csv", "text/csv", bytes.NewReader(b.Bytes())).
 		Post(c.baseURL + CreateBulkCertificatesSMIMEPath)
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if err != nil {
@@ -705,7 +705,7 @@ func (c *Client) GetSmimeBulkCertificateEntries() (*[]models.BulkCertificateList
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -727,7 +727,7 @@ func (c *Client) GetSingleSmimeBulkCertificateEntry(id string) (*models.BulkCert
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
@@ -757,7 +757,7 @@ func (c *Client) RevokeSmimeBulkCertificateEntry(transactionId string, comment s
 	if err != nil {
 		return err
 	}
-	if resp.IsError() {
+	if resp != nil && resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	return nil
