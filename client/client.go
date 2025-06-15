@@ -85,10 +85,11 @@ func (e *UnexpectedResponseContentTypeError) Error() string {
 
 type UnexpectedResponseCodeError struct {
 	Code int
+	Body []byte
 }
 
 func (e *UnexpectedResponseCodeError) Error() string {
-	return fmt.Sprintf("unexpected response status code: %d", e.Code)
+	return fmt.Sprintf("unexpected response status code %d: %s", e.Code, e.Body)
 }
 
 func NewClient(user, password, totpSeed string, options ...Option) (*Client, error) {
@@ -306,7 +307,7 @@ func (c *Client) GetRevocationReasons() ([]models.RevocationReasonsResponse, err
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -353,7 +354,7 @@ func (c *Client) CheckMatchingOrganization(domains []string) ([]models.Organizat
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -374,7 +375,7 @@ func (c *Client) GetMyTransactions() ([]models.TransactionResponse, error) {
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -396,7 +397,7 @@ func (c *Client) GetCertificate(id string) (*models.CertificateResponse, error) 
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -422,7 +423,7 @@ func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, er
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -482,7 +483,7 @@ func (c *Client) RequestCertificate(domains []string, csr string, transactionTyp
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -508,7 +509,7 @@ func (c *Client) GetPendingReviews() ([]models.ReviewResponse, error) {
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -551,7 +552,7 @@ func (c *Client) GetOrganizations() ([]models.Organization, error) {
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -572,7 +573,7 @@ func (c *Client) GetOrganizationsBulk() ([]models.Organization, error) {
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -657,7 +658,7 @@ func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.Smi
 		SetMultipartField("csv", "bulk.csv", "text/csv", bytes.NewReader(b.Bytes())).
 		Post(c.baseURL + CreateBulkCertificatesSMIMEPath)
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if err != nil {
 		return nil, err
@@ -705,7 +706,7 @@ func (c *Client) GetSmimeBulkCertificateEntries() (*[]models.BulkCertificateList
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
@@ -727,7 +728,7 @@ func (c *Client) GetSingleSmimeBulkCertificateEntry(id string) (*models.BulkCert
 		return nil, err
 	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
