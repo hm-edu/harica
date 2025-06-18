@@ -77,18 +77,20 @@ type Option func(*Client)
 
 type UnexpectedResponseContentTypeError struct {
 	ContentType string
+	Body        []byte
 }
 
 func (e *UnexpectedResponseContentTypeError) Error() string {
-	return fmt.Sprintf("unexpected response content type: %s", e.ContentType)
+	return fmt.Sprintf("unexpected response content type: %s (find request body in this errors `body` field)", e.ContentType)
 }
 
 type UnexpectedResponseCodeError struct {
 	Code int
+	Body []byte
 }
 
 func (e *UnexpectedResponseCodeError) Error() string {
-	return fmt.Sprintf("unexpected response status code: %d", e.Code)
+	return fmt.Sprintf("unexpected response status code %d: %s", e.Code, e.Body)
 }
 
 func NewClient(user, password, totpSeed string, options ...Option) (*Client, error) {
@@ -216,6 +218,9 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 	if err != nil {
 		return err
 	}
+	if resp == nil {
+		return errors.New("2FA Login response is nil")
+	}
 	if resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
@@ -262,6 +267,9 @@ func (c *Client) login(user, password string) error {
 	if err != nil {
 		return err
 	}
+	if resp == nil {
+		return errors.New("login response is nil")
+	}
 	if resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
@@ -305,11 +313,14 @@ func (c *Client) GetRevocationReasons() ([]models.RevocationReasonsResponse, err
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("revocation reasons response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	fmt.Printf("Response: %v", resp)
 	return response, nil
@@ -329,6 +340,9 @@ func (c *Client) RevokeCertificate(reason models.RevocationReasonsResponse, comm
 		Post(c.baseURL + RevokeCertificatePath)
 	if err != nil {
 		return err
+	}
+	if resp == nil {
+		return errors.New("revoke certificate response is nil")
 	}
 	if resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
@@ -352,11 +366,14 @@ func (c *Client) CheckMatchingOrganization(domains []string) ([]models.Organizat
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("check matching organization response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	return response, nil
 }
@@ -373,11 +390,14 @@ func (c *Client) GetMyTransactions() ([]models.TransactionResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("my-transactions response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	return transactions, nil
 }
@@ -395,11 +415,14 @@ func (c *Client) GetCertificate(id string) (*models.CertificateResponse, error) 
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("certificate response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	return &cert, nil
 }
@@ -421,11 +444,14 @@ func (c *Client) CheckDomainNames(domains []string) ([]models.DomainResponse, er
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("check domain names response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	return domainResp, nil
 }
@@ -481,11 +507,14 @@ func (c *Client) RequestCertificate(domains []string, csr string, transactionTyp
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("server certificate response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	return &result, nil
 }
@@ -507,11 +536,14 @@ func (c *Client) GetPendingReviews() ([]models.ReviewResponse, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("pending reviews response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	return pending, nil
 }
@@ -529,11 +561,14 @@ func (c *Client) ApproveRequest(id, message, value string) error {
 			"reviewValue":     value,
 		}).
 		Post(c.baseURL + UpdateReviewsPath)
-	if resp.IsError() {
-		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
-	}
 	if err != nil {
 		return err
+	}
+	if resp == nil {
+		return errors.New("approve request response is nil")
+	}
+	if resp.IsError() {
+		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
 	}
 	return nil
 }
@@ -550,11 +585,14 @@ func (c *Client) GetOrganizations() ([]models.Organization, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("organizations response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	return orgs, nil
 }
@@ -571,11 +609,14 @@ func (c *Client) GetOrganizationsBulk() ([]models.Organization, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("bulk organizations response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	return orgs, nil
 }
@@ -593,6 +634,9 @@ func (c *Client) TriggerValidation(organizatonId, email string) error {
 		Post(c.baseURL + CreatePrevalidaitonPath)
 	if err != nil {
 		return err
+	}
+	if resp == nil {
+		return errors.New("validation response is nil")
 	}
 	if resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
@@ -656,11 +700,14 @@ func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.Smi
 		}).
 		SetMultipartField("csv", "bulk.csv", "text/csv", bytes.NewReader(b.Bytes())).
 		Post(c.baseURL + CreateBulkCertificatesSMIMEPath)
-	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
-	}
 	if err != nil {
 		return nil, err
+	}
+	if resp == nil {
+		return nil, errors.New("bulk smime certificate request response is nil")
+	}
+	if resp.IsError() {
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	// Determine the difference ...
 	entriesAfter, err := c.GetSmimeBulkCertificateEntries()
@@ -704,11 +751,14 @@ func (c *Client) GetSmimeBulkCertificateEntries() (*[]models.BulkCertificateList
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("bulk smime certificates entries response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	return &certs, nil
 }
@@ -726,11 +776,14 @@ func (c *Client) GetSingleSmimeBulkCertificateEntry(id string) (*models.BulkCert
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		return nil, errors.New("bulk smime certificates entry response is nil")
+	}
 	if resp.IsError() {
-		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode()}
+		return nil, &UnexpectedResponseCodeError{Code: resp.StatusCode(), Body: resp.Body()}
 	}
 	if !strings.Contains(resp.Header().Get("Content-Type"), ApplicationJson) {
-		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type")}
+		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: resp.Body()}
 	}
 	if len(cert) == 0 {
 		return nil, errors.New("no certificate found")
@@ -755,6 +808,9 @@ func (c *Client) RevokeSmimeBulkCertificateEntry(transactionId string, comment s
 		Post(c.baseURL + RevokeBulkCertificatePath)
 	if err != nil {
 		return err
+	}
+	if resp == nil {
+		return errors.New("revoke bulk smime certificate response is nil")
 	}
 	if resp.IsError() {
 		return &UnexpectedResponseCodeError{Code: resp.StatusCode()}
