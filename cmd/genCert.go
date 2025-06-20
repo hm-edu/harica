@@ -56,6 +56,14 @@ var genCertCmd = &cobra.Command{
 		if configPath != "" {
 			viper.SetConfigFile(configPath)
 		}
+
+		for k, v := range keyMapping {
+			err := viper.BindPFlag(v, cmd.Flags().Lookup(k))
+			if err != nil {
+				slog.Error("Failed to bind flag", slog.Any("error", err))
+				os.Exit(1)
+			}
+		}
 		if err := viper.ReadInConfig(); err != nil {
 			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 				slog.Info("No configuration file found")
@@ -206,14 +214,6 @@ func init() {
 	genCertCmd.Flags().String("validator-email", "", "Email of validator")
 	genCertCmd.Flags().String("validator-password", "", "Password of validator")
 	genCertCmd.Flags().String("validator-totp-seed", "", "TOTP seed of validator")
-
-	for k, v := range keyMapping {
-		err := viper.BindPFlag(v, genCertCmd.Flags().Lookup(k))
-		if err != nil {
-			slog.Error("Failed to bind flag", slog.Any("error", err))
-			os.Exit(1)
-		}
-	}
 
 	for _, s := range []string{"requester-email", "requester-password", "validator-email", "validator-password", "validator-totp-seed"} {
 		err := genCertCmd.MarkFlagRequired(s)

@@ -55,6 +55,15 @@ var genCertSmimeCmd = &cobra.Command{
 		if configPathSmime != "" {
 			viper.SetConfigFile(configPathSmime)
 		}
+
+		for k, v := range keyMappingSmime {
+			err := viper.BindPFlag(v, cmd.Flags().Lookup(k))
+			if err != nil {
+				slog.Error("Failed to bind flag", slog.Any("error", err))
+				os.Exit(1)
+			}
+		}
+
 		if err := viper.ReadInConfig(); err != nil {
 			if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 				slog.Info("No configuration file found")
@@ -160,13 +169,6 @@ func init() {
 	genCertSmimeCmd.Flags().String("friendly-name", "", "Name to identify the certificate")
 	genCertSmimeCmd.Flags().String("given-name", "", "Givenname of the certificate requestor")
 	genCertSmimeCmd.Flags().String("sur-name", "", "Surname of the certificate requestor")
-	for k, v := range keyMappingSmime {
-		err := viper.BindPFlag(v, genCertSmimeCmd.Flags().Lookup(k))
-		if err != nil {
-			slog.Error("Failed to bind flag", slog.Any("error", err))
-			os.Exit(1)
-		}
-	}
 
 	for _, s := range []string{"requester-email", "requester-password", "requester-totp-seed"} {
 		err := genCertSmimeCmd.MarkFlagRequired(s)
