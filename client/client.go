@@ -55,18 +55,20 @@ const (
 )
 
 type Client struct {
-	baseURL         string
-	client          *resty.Client
-	currentToken    string
-	debug           bool
-	user            string
-	password        string
-	totp            string
-	retryEnabled    bool
-	retry           int
-	refreshInterval time.Duration
-	loginLock       sync.RWMutex
-	bulkLock        sync.RWMutex
+	baseURL               string
+	client                *resty.Client
+	currentToken          string
+	debug                 bool
+	user                  string
+	password              string
+	totp                  string
+	retryEnabled          bool
+	retry                 int
+	requestTimeoutEnabled bool
+	requestTimeout        time.Duration
+	refreshInterval       time.Duration
+	loginLock             sync.RWMutex
+	bulkLock              sync.RWMutex
 }
 
 type Domain struct {
@@ -141,6 +143,13 @@ func WithRetry(retry int) Option {
 	return func(c *Client) {
 		c.retryEnabled = true
 		c.retry = retry
+	}
+}
+
+func WithRequestTimeout(timeout time.Duration) Option {
+	return func(c *Client) {
+		c.requestTimeoutEnabled = true
+		c.requestTimeout = timeout
 	}
 }
 
@@ -249,6 +258,9 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 	if c.retryEnabled {
 		c.client = c.client.SetRetryCount(c.retry)
 	}
+	if c.requestTimeoutEnabled {
+		c.client = c.client.SetTimeout(c.requestTimeout)
+	}
 	slog.Info("Token expires", slog.Time("exp", exp.Time))
 	return nil
 }
@@ -297,6 +309,9 @@ func (c *Client) login(user, password string) error {
 	}
 	if c.retryEnabled {
 		c.client = c.client.SetRetryCount(c.retry)
+	}
+	if c.requestTimeoutEnabled {
+		c.client = c.client.SetTimeout(c.requestTimeout)
 	}
 	slog.Info("Token expires", slog.Time("exp", exp.Time))
 	return nil
