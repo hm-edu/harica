@@ -6,7 +6,7 @@ require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.5
 	github.com/emersion/go-message v0.18.2
 	github.com/go-resty/resty/v2 v2.16.5
-	github.com/golang-jwt/jwt/v5 v5.2.2
+	github.com/golang-jwt/jwt/v5 v5.2.3
 	github.com/miekg/dns v1.1.66
 	github.com/pquerna/otp v1.5.0
 	github.com/spf13/cobra v1.9.1
