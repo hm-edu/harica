@@ -1,6 +1,6 @@
 module github.com/hm-edu/harica
 
-go 1.23.3
+go 1.25.0
 
 require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.7
