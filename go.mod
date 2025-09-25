@@ -3,7 +3,7 @@ module github.com/hm-edu/harica
 go 1.23.3
 
 require (
-	github.com/emersion/go-imap/v2 v2.0.0-beta.6
+	github.com/emersion/go-imap/v2 v2.0.0-beta.7
 	github.com/emersion/go-message v0.18.2
 	github.com/go-resty/resty/v2 v2.16.5
 	github.com/golang-jwt/jwt/v5 v5.3.0
