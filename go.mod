@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.7
 	github.com/emersion/go-message v0.18.2
-	github.com/go-resty/resty/v2 v2.16.5
+	github.com/go-resty/resty/v2 v2.17.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/miekg/dns v1.1.68
 	github.com/pquerna/otp v1.5.0
