@@ -50,7 +50,7 @@ var validationCmd = &cobra.Command{
 			slog.Warn("You are trying to validate more than 10 domains. This is not recommended. You should use smaller batches.")
 		}
 
-		haricaClient, err := client.NewClient(config.username, config.password, config.totp, client.WithDebug(debug))
+		haricaClient, err := client.NewClient(config.username, config.password, config.totp, client.WithDebug(debug), client.WithRetry(3))
 		if err != nil {
 			slog.Error("Failed to create client:", slog.Any("error", err))
 			return
@@ -107,13 +107,12 @@ var validationCmd = &cobra.Command{
 		}
 
 		wg := sync.WaitGroup{}
-
+		c, err := client.NewClient(config.username, config.password, config.totp, client.WithDebug(debug), client.WithRetry(3))
 		for domain, code := range validationCodes {
 			slog.Info("Got validation code", slog.String("domain", domain), slog.String("code", code.Code))
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				c, err := client.NewClient(config.username, config.password, config.totp, client.WithDebug(debug))
 				if err != nil {
 					slog.Error("Failed to validate domain:", slog.Any("error", err))
 				}
@@ -141,6 +140,7 @@ func validate(domain string, code imap.ValidationCode, dnsProvider *axfr.DNSProv
 				slog.Error("Failed to parse TXT record:", slog.Any("error", err))
 				break
 			}
+			slog.Info("Removing old TXT record", slog.String("record", record))
 			err = dnsProvider.Delete(domain, []dns.RR{rr})
 			if err != nil {
 				return err
@@ -164,17 +164,17 @@ func validate(domain string, code imap.ValidationCode, dnsProvider *axfr.DNSProv
 		orgsTmp, err := client.GetOrganizations()
 		if err != nil {
 			slog.Error("Failed to get organizations:", slog.Any("error", err))
-			return err
-		}
-		for _, org := range orgsTmp {
-			if org.Domain == domain {
-				if d, err := time.Parse("2006-01-02T15:04:05", org.Validity); err == nil && d.After(time.Now()) {
-					slog.Info("Domain is validated. Removing TXT record again.", slog.String("domain", org.Domain))
-					err = dnsProvider.Delete(domain, []dns.RR{rr})
-					if err != nil {
-						return err
+		} else {
+			for _, org := range orgsTmp {
+				if org.Domain == domain {
+					if d, err := time.Parse("2006-01-02T15:04:05", org.Validity); err == nil && d.After(time.Now().Add(30*24*time.Hour)) {
+						slog.Info("Domain is validated. Removing TXT record again.", slog.String("domain", org.Domain))
+						err = dnsProvider.Delete(domain, []dns.RR{rr})
+						if err != nil {
+							return err
+						}
+						valid = true
 					}
-					valid = true
 				}
 			}
 		}
