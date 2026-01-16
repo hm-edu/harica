@@ -7,7 +7,7 @@ require (
 	github.com/emersion/go-message v0.18.2
 	github.com/go-resty/resty/v2 v2.17.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
-	github.com/miekg/dns v1.1.68
+	github.com/miekg/dns v1.1.70
 	github.com/pquerna/otp v1.5.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
