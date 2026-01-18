@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/hm-edu/harica/client"
@@ -29,6 +30,8 @@ type GenCertSmimeConfig struct {
 var (
 	genCertSmimeConfig GenCertSmimeConfig
 	configPathSmime    string
+	smimeOutputFormat  string
+	smimeZipOutPath    string
 	keyMappingSmime    = map[string]string{
 		"csr":                 "csr",
 		"cert-type":           "cert_type",
@@ -101,6 +104,9 @@ var genCertSmimeCmd = &cobra.Command{
 		})
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		resolvedAPIKey := viper.GetString("api_key")
+		resolvedOrganizationID := viper.GetString("organization_id")
+
 		// improve
 		if len(genCertSmimeConfig.Email) == 0 {
 			slog.Error("'emails' is required at the moment.")
@@ -108,6 +114,109 @@ var genCertSmimeCmd = &cobra.Command{
 		}
 
 		genCertSmimeConfig.Csr = strings.ReplaceAll(genCertSmimeConfig.Csr, "\\n", "\n")
+
+		if strings.TrimSpace(resolvedAPIKey) != "" {
+			slog.Info("Using API-key mode for S/MIME bulk issuance")
+			if strings.TrimSpace(resolvedOrganizationID) == "" {
+				slog.Info("No organization id provided; attempting autodiscovery via /cm/v1/admin/enterprises")
+				enterprises, raw, err := client.ListCMv1Enterprises(client.BaseURLProduction, resolvedAPIKey, debug)
+				if err != nil {
+					if len(raw) > 0 {
+						fmt.Fprintln(os.Stderr, string(raw))
+					}
+					slog.Error("failed to autodiscover organization id", slog.Any("error", err))
+					os.Exit(1)
+				}
+				unique := map[string]struct{}{}
+				for _, e := range enterprises {
+					id := strings.TrimSpace(e.OrganizationID)
+					if id == "" {
+						continue
+					}
+					unique[id] = struct{}{}
+				}
+				switch len(unique) {
+				case 1:
+					for id := range unique {
+						resolvedOrganizationID = id
+						break
+					}
+					slog.Info("Autodiscovered organization id", slog.String("organization_id", resolvedOrganizationID))
+				case 0:
+					slog.Error("no organization ids available for this api key; provide an organization-id or run 'harica --api-key ... org-ids'")
+					os.Exit(1)
+				default:
+					slog.Error("multiple organization ids available; provide an organization-id or run 'harica --api-key ... org-ids' to list options")
+					os.Exit(1)
+				}
+			}
+
+			slog.Debug("Using organization id", slog.String("organization_id", resolvedOrganizationID))
+
+			var smimeBulk = models.SmimeBulkRequest{
+				FriendlyName:   genCertSmimeConfig.FriendlyName,
+				Email:          genCertSmimeConfig.Email,
+				Email2:         "",
+				Email3:         "",
+				GivenName:      genCertSmimeConfig.GivenName,
+				Surname:        genCertSmimeConfig.SurName,
+				PickupPassword: "",
+				CertType:       genCertSmimeConfig.CertType,
+				CSR:            genCertSmimeConfig.Csr,
+			}
+			if debug {
+				slog.Debug("CSR logged:", slog.Any("csr", smimeBulk.CSR))
+			}
+
+			zipBytes, err := client.CreateCMv1SmimeBulkZip(client.BaseURLProduction, resolvedAPIKey, resolvedOrganizationID, smimeBulk, debug)
+			if err != nil {
+				if e, ok := err.(*client.UnexpectedResponseCodeError); ok {
+					fmt.Fprintln(os.Stderr, string(e.Body))
+					os.Exit(1)
+				}
+				if e, ok := err.(*client.UnexpectedResponseContentTypeError); ok {
+					fmt.Fprintln(os.Stderr, string(e.Body))
+					os.Exit(1)
+				}
+				slog.Error("failed to request certificate", slog.Any("error", err))
+				os.Exit(1)
+			}
+
+			output := strings.ToLower(strings.TrimSpace(smimeOutputFormat))
+			if output == "" {
+				output = "pem"
+			}
+			switch output {
+			case "zip":
+				outPath := strings.TrimSpace(smimeZipOutPath)
+				if outPath == "" {
+					outPath = filepath.Join(".", "smime.zip")
+				}
+				if err := os.WriteFile(outPath, zipBytes, 0o644); err != nil {
+					slog.Error("failed to write zip", slog.String("path", outPath), slog.Any("error", err))
+					os.Exit(1)
+				}
+				slog.Info("Wrote S/MIME ZIP", slog.String("path", outPath))
+				fmt.Println(outPath)
+				return
+			case "pem":
+				pemCert, err := client.ExtractFirstCertificatePEMFromZip(zipBytes)
+				if err != nil {
+					slog.Error("failed to extract certificate from zip", slog.Any("error", err))
+					os.Exit(1)
+				}
+				fmt.Print(pemCert)
+				return
+			default:
+				slog.Error("invalid output format; use pem or zip", slog.String("output", smimeOutputFormat))
+				os.Exit(1)
+			}
+		}
+
+		if strings.TrimSpace(genCertSmimeConfig.RequesterEmail) == "" || strings.TrimSpace(genCertSmimeConfig.RequesterPassword) == "" || strings.TrimSpace(genCertSmimeConfig.RequesterTOTPSeed) == "" {
+			slog.Error("requester credentials are required when no api key is provided (requester-email, requester-password, requester-totp-seed)")
+			os.Exit(1)
+		}
 
 		requester, err := client.NewClient(genCertSmimeConfig.RequesterEmail, genCertSmimeConfig.RequesterPassword, genCertSmimeConfig.RequesterTOTPSeed, client.WithDebug(debug), client.WithEnvironment(environment))
 		if err != nil {
@@ -170,12 +279,6 @@ func init() {
 	genCertSmimeCmd.Flags().String("friendly-name", "", "Name to identify the certificate")
 	genCertSmimeCmd.Flags().String("given-name", "", "Givenname of the certificate requestor")
 	genCertSmimeCmd.Flags().String("sur-name", "", "Surname of the certificate requestor")
-
-	for _, s := range []string{"requester-email", "requester-password", "requester-totp-seed"} {
-		err := genCertSmimeCmd.MarkFlagRequired(s)
-		if err != nil {
-			slog.Error("Failed to mark flag required", slog.Any("error", err))
-			os.Exit(1)
-		}
-	}
+	genCertSmimeCmd.Flags().StringVar(&smimeOutputFormat, "output", "pem", "Output format in API-key mode: pem (default) or zip")
+	genCertSmimeCmd.Flags().StringVar(&smimeZipOutPath, "zip-out", "", "Output ZIP path when --output=zip (default: ./smime.zip)")
 }
