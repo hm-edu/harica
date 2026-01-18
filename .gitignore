@@ -30,3 +30,6 @@ dist/
 # Config files for local development
 dns_configs
 .vscode/launch.json
+.vscode/tasks.json
+.devcontainer/devcontainer.json
+.devcontainer/Dockerfile
