@@ -49,7 +49,7 @@ Using environment variables:
 
 ```sh
 export HARICA_API_KEY="..."
-export HARICA_ORGANIZATION_ID="..." # optional; see autodiscovery note below
+export HARICA_ORGANIZATION_ID="..." # required for API-key mode
 
 ./harica gen-cert smime \
   --email "user@example.org" \
@@ -75,6 +75,14 @@ Using flags:
 Output: on success, the command writes a `smime.zip` next to the executable and prints the output path.
 
 Note: `organization_id` is required in API-key mode.
+
+### Find organization IDs
+
+To list the organization IDs available to your API key:
+
+```sh
+./harica --api-key "..." org-ids
+```
 
 
 ## Automatic Domain Validation using AXFR
