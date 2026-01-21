@@ -30,6 +30,8 @@ type GenCertSmimeConfig struct {
 var (
 	genCertSmimeConfig GenCertSmimeConfig
 	configPathSmime    string
+	smimeOutputFormat  string
+	smimeZipOutPath    string
 	keyMappingSmime    = map[string]string{
 		"csr":                 "csr",
 		"cert-type":           "cert_type",
@@ -150,19 +152,35 @@ var genCertSmimeCmd = &cobra.Command{
 				os.Exit(1)
 			}
 
-			exePath, err := os.Executable()
-			if err != nil {
-				slog.Error("failed to resolve executable path", slog.Any("error", err))
+			output := strings.ToLower(strings.TrimSpace(smimeOutputFormat))
+			if output == "" {
+				output = "pem"
+			}
+			switch output {
+			case "zip":
+				outPath := strings.TrimSpace(smimeZipOutPath)
+				if outPath == "" {
+					outPath = filepath.Join(".", "smime.zip")
+				}
+				if err := os.WriteFile(outPath, zipBytes, 0o644); err != nil {
+					slog.Error("failed to write zip", slog.String("path", outPath), slog.Any("error", err))
+					os.Exit(1)
+				}
+				slog.Info("Wrote S/MIME ZIP", slog.String("path", outPath))
+				fmt.Println(outPath)
+				return
+			case "pem":
+				pemCert, err := client.ExtractFirstCertificatePEMFromZip(zipBytes)
+				if err != nil {
+					slog.Error("failed to extract certificate from zip", slog.Any("error", err))
+					os.Exit(1)
+				}
+				fmt.Print(pemCert)
+				return
+			default:
+				slog.Error("invalid output format; use pem or zip", slog.String("output", smimeOutputFormat))
 				os.Exit(1)
 			}
-			outPath := filepath.Join(filepath.Dir(exePath), "smime.zip")
-			if err := os.WriteFile(outPath, zipBytes, 0o644); err != nil {
-				slog.Error("failed to write zip", slog.String("path", outPath), slog.Any("error", err))
-				os.Exit(1)
-			}
-			slog.Info("Wrote S/MIME ZIP", slog.String("path", outPath))
-			fmt.Println(outPath)
-			return
 		}
 
 		if strings.TrimSpace(genCertSmimeConfig.RequesterEmail) == "" || strings.TrimSpace(genCertSmimeConfig.RequesterPassword) == "" || strings.TrimSpace(genCertSmimeConfig.RequesterTOTPSeed) == "" {
@@ -231,4 +249,6 @@ func init() {
 	genCertSmimeCmd.Flags().String("friendly-name", "", "Name to identify the certificate")
 	genCertSmimeCmd.Flags().String("given-name", "", "Givenname of the certificate requestor")
 	genCertSmimeCmd.Flags().String("sur-name", "", "Surname of the certificate requestor")
+	genCertSmimeCmd.Flags().StringVar(&smimeOutputFormat, "output", "pem", "Output format in API-key mode: pem (default) or zip")
+	genCertSmimeCmd.Flags().StringVar(&smimeZipOutPath, "zip-out", "", "Output ZIP path when --output=zip (default: ./smime.zip)")
 }

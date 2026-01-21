@@ -1,11 +1,15 @@
 package client
 
 import (
+	"archive/zip"
 	"bytes"
+	"crypto/x509"
 	"encoding/csv"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/go-resty/resty/v2"
@@ -173,4 +177,50 @@ func CreateCMv1SmimeBulkZip(baseURL, apiKey, organizationID string, request mode
 		return nil, &UnexpectedResponseContentTypeError{ContentType: resp.Header().Get("Content-Type"), Body: body}
 	}
 	return body, nil
+}
+
+// ExtractFirstCertificatePEMFromZip tries to locate the first leaf certificate in the ZIP
+// response and returns it as PEM.
+//
+// The HARICA bulk S/MIME endpoint returns a ZIP on success. For single-user requests
+// we use this helper to keep stdout output compatible with legacy flows.
+func ExtractFirstCertificatePEMFromZip(zipBytes []byte) (string, error) {
+	if len(zipBytes) == 0 {
+		return "", errors.New("zip is empty")
+	}
+
+	zr, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+	if err != nil {
+		return "", err
+	}
+
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			continue
+		}
+		data, readErr := io.ReadAll(io.LimitReader(rc, 25<<20))
+		_ = rc.Close()
+		if readErr != nil {
+			continue
+		}
+
+		text := strings.TrimSpace(string(data))
+		if strings.Contains(text, "-----BEGIN CERTIFICATE-----") {
+			if !strings.HasSuffix(text, "\n") {
+				text += "\n"
+			}
+			return text, nil
+		}
+
+		if cert, err := x509.ParseCertificate(data); err == nil {
+			block := &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}
+			return string(pem.EncodeToMemory(block)), nil
+		}
+	}
+
+	return "", errors.New("no certificate found in zip")
 }

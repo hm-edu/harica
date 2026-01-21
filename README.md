@@ -72,7 +72,10 @@ Using flags:
   --csr "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----"
 ```
 
-Output: on success, the command writes a `smime.zip` next to the executable and prints the output path.
+Output in API-key mode:
+
+- Default: prints the PEM certificate to stdout (PowerShell-friendly).
+- `--output zip`: writes the ZIP to `./smime.zip` (or `--zip-out <path>`) and prints the ZIP path.
 
 Note: `organization_id` is required in API-key mode.
 
