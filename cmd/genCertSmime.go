@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/hm-edu/harica/client"
@@ -101,6 +102,9 @@ var genCertSmimeCmd = &cobra.Command{
 		})
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		resolvedAPIKey := viper.GetString("api_key")
+		resolvedOrganizationID := viper.GetString("organization_id")
+
 		// improve
 		if len(genCertSmimeConfig.Email) == 0 {
 			slog.Error("'emails' is required at the moment.")
@@ -108,6 +112,64 @@ var genCertSmimeCmd = &cobra.Command{
 		}
 
 		genCertSmimeConfig.Csr = strings.ReplaceAll(genCertSmimeConfig.Csr, "\\n", "\n")
+		if strings.TrimSpace(resolvedAPIKey) != "" {
+			slog.Info("Using API-key mode for S/MIME bulk issuance")
+			if strings.TrimSpace(resolvedOrganizationID) == "" {
+				slog.Error("organization id is required when using an api key; provide --organization-id, HARICA_ORGANIZATION_ID, or config key organization_id")
+				os.Exit(1)
+			}
+
+			slog.Debug("Using organization id", slog.String("organization_id", resolvedOrganizationID))
+
+			var smimeBulk = models.SmimeBulkRequest{
+				FriendlyName:   genCertSmimeConfig.FriendlyName,
+				Email:          genCertSmimeConfig.Email,
+				Email2:         "",
+				Email3:         "",
+				GivenName:      genCertSmimeConfig.GivenName,
+				Surname:        genCertSmimeConfig.SurName,
+				PickupPassword: "",
+				CertType:       genCertSmimeConfig.CertType,
+				CSR:            genCertSmimeConfig.Csr,
+			}
+			if debug {
+				slog.Debug("CSR logged:", slog.Any("csr", smimeBulk.CSR))
+			}
+
+			zipBytes, err := client.CreateCMv1SmimeBulkZip(client.BaseURLProduction, resolvedAPIKey, resolvedOrganizationID, smimeBulk, debug)
+			if err != nil {
+				if e, ok := err.(*client.UnexpectedResponseCodeError); ok {
+					fmt.Fprintln(os.Stderr, string(e.Body))
+					os.Exit(1)
+				}
+				if e, ok := err.(*client.UnexpectedResponseContentTypeError); ok {
+					fmt.Fprintln(os.Stderr, string(e.Body))
+					os.Exit(1)
+				}
+				slog.Error("failed to request certificate", slog.Any("error", err))
+				os.Exit(1)
+			}
+
+			exePath, err := os.Executable()
+			if err != nil {
+				slog.Error("failed to resolve executable path", slog.Any("error", err))
+				os.Exit(1)
+			}
+			outPath := filepath.Join(filepath.Dir(exePath), "smime.zip")
+			if err := os.WriteFile(outPath, zipBytes, 0o644); err != nil {
+				slog.Error("failed to write zip", slog.String("path", outPath), slog.Any("error", err))
+				os.Exit(1)
+			}
+			slog.Info("Wrote S/MIME ZIP", slog.String("path", outPath))
+			fmt.Println(outPath)
+			return
+		}
+
+		if strings.TrimSpace(genCertSmimeConfig.RequesterEmail) == "" || strings.TrimSpace(genCertSmimeConfig.RequesterPassword) == "" || strings.TrimSpace(genCertSmimeConfig.RequesterTOTPSeed) == "" {
+			slog.Error("requester credentials are required when no api key is provided (requester-email, requester-password, requester-totp-seed)")
+			os.Exit(1)
+		}
+
 		requester, err := client.NewClient(genCertSmimeConfig.RequesterEmail, genCertSmimeConfig.RequesterPassword, genCertSmimeConfig.RequesterTOTPSeed, client.WithDebug(debug))
 		if err != nil {
 			slog.Error("failed to create requester client", slog.Any("error", err))
@@ -169,12 +231,4 @@ func init() {
 	genCertSmimeCmd.Flags().String("friendly-name", "", "Name to identify the certificate")
 	genCertSmimeCmd.Flags().String("given-name", "", "Givenname of the certificate requestor")
 	genCertSmimeCmd.Flags().String("sur-name", "", "Surname of the certificate requestor")
-
-	for _, s := range []string{"requester-email", "requester-password", "requester-totp-seed"} {
-		err := genCertSmimeCmd.MarkFlagRequired(s)
-		if err != nil {
-			slog.Error("Failed to mark flag required", slog.Any("error", err))
-			os.Exit(1)
-		}
-	}
 }

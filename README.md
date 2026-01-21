@@ -24,6 +24,58 @@ validator_password: ""
 requester_password: ""
 ```
 
+## Generate S/MIME via API key (bulk)
+
+The `gen-cert smime` command supports an API-key mode (no requester/approver credentials or TOTP needed).
+
+Note: `--api-key` and `--organization-id` are global (root) flags, so they can be placed before or after the subcommands; currently they are only used by `gen-cert smime`.
+
+### Configuration precedence
+
+Precedence is:
+
+1. Flag
+2. Environment variable
+3. Config file
+
+Supported settings:
+
+- Flag: `--api-key`, Env: `HARICA_API_KEY`, Config: `api_key`
+- Flag: `--organization-id`, Env: `HARICA_ORGANIZATION_ID`, Config: `organization_id`
+
+### Usage
+
+Using environment variables:
+
+```sh
+export HARICA_API_KEY="..."
+export HARICA_ORGANIZATION_ID="..." # optional; see autodiscovery note below
+
+./harica gen-cert smime \
+  --email "user@example.org" \
+  --given-name "Jane" \
+  --sur-name "Doe" \
+  --friendly-name "Jane Doe" \
+  --cert-type "email_only" \
+  --csr "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----"
+```
+
+Using flags:
+
+```sh
+./harica --api-key "..." --organization-id "..." gen-cert smime \
+  --email "user@example.org" \
+  --given-name "Jane" \
+  --sur-name "Doe" \
+  --friendly-name "Jane Doe" \
+  --cert-type "email_only" \
+  --csr "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----"
+```
+
+Output: on success, the command writes a `smime.zip` next to the executable and prints the output path.
+
+Note: `organization_id` is required in API-key mode.
+
 
 ## Automatic Domain Validation using AXFR
 
