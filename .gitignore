@@ -27,6 +27,12 @@ harica
 
 dist/
 
+# local build output
+bin/
+
+# bulk response artifacts
+*.zip
+
 # Config files for local development
 dns_configs
 .vscode/launch.json

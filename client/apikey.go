@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/hm-edu/harica/models"
+	"go.mozilla.org/pkcs7"
 )
 
 const (
@@ -219,6 +220,26 @@ func ExtractFirstCertificatePEMFromZip(zipBytes []byte) (string, error) {
 		if cert, err := x509.ParseCertificate(data); err == nil {
 			block := &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}
 			return string(pem.EncodeToMemory(block)), nil
+		}
+
+		// HARICA bulk S/MIME ZIPs may contain a PKCS#7 (.p7b) bundle.
+		// Try to parse it and return the first non-CA certificate.
+		if p7, err := pkcs7.Parse(data); err == nil {
+			certs := p7.Certificates
+			if len(certs) == 0 {
+				continue
+			}
+			chosen := certs[0]
+			for _, c := range certs {
+				if c != nil && !c.IsCA {
+					chosen = c
+					break
+				}
+			}
+			if chosen != nil {
+				block := &pem.Block{Type: "CERTIFICATE", Bytes: chosen.Raw}
+				return string(pem.EncodeToMemory(block)), nil
+			}
 		}
 	}
 
