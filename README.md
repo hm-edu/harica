@@ -49,7 +49,7 @@ Using environment variables:
 
 ```sh
 export HARICA_API_KEY="..."
-export HARICA_ORGANIZATION_ID="..." # required for API-key mode
+export HARICA_ORGANIZATION_ID="..." # optional if autodiscovery finds exactly one org id
 
 ./harica gen-cert smime \
   --email "user@example.org" \
@@ -77,7 +77,7 @@ Output in API-key mode:
 - Default: prints the PEM certificate to stdout (PowerShell-friendly).
 - `--output zip`: writes the ZIP to `./smime.zip` (or `--zip-out <path>`) and prints the ZIP path.
 
-Note: `organization_id` is required in API-key mode.
+Note: if `organization_id` is not provided, the CLI will try to autodiscover it via `GET /cm/v1/admin/enterprises`. Autodiscovery only works when exactly one unique organization id is available to the API key.
 
 ### Find organization IDs
 

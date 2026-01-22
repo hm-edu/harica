@@ -117,8 +117,37 @@ var genCertSmimeCmd = &cobra.Command{
 		if strings.TrimSpace(resolvedAPIKey) != "" {
 			slog.Info("Using API-key mode for S/MIME bulk issuance")
 			if strings.TrimSpace(resolvedOrganizationID) == "" {
-				slog.Error("organization id is required when using an api key; provide --organization-id, HARICA_ORGANIZATION_ID, or config key organization_id")
-				os.Exit(1)
+				slog.Info("No organization id provided; attempting autodiscovery via /cm/v1/admin/enterprises")
+				enterprises, raw, err := client.ListCMv1Enterprises(client.BaseURLProduction, resolvedAPIKey, debug)
+				if err != nil {
+					if len(raw) > 0 {
+						fmt.Fprintln(os.Stderr, string(raw))
+					}
+					slog.Error("failed to autodiscover organization id", slog.Any("error", err))
+					os.Exit(1)
+				}
+				unique := map[string]struct{}{}
+				for _, e := range enterprises {
+					id := strings.TrimSpace(e.OrganizationID)
+					if id == "" {
+						continue
+					}
+					unique[id] = struct{}{}
+				}
+				switch len(unique) {
+				case 1:
+					for id := range unique {
+						resolvedOrganizationID = id
+						break
+					}
+					slog.Info("Autodiscovered organization id", slog.String("organization_id", resolvedOrganizationID))
+				case 0:
+					slog.Error("no organization ids available for this api key; provide an organization-id or run 'harica --api-key ... org-ids'")
+					os.Exit(1)
+				default:
+					slog.Error("multiple organization ids available; provide an organization-id or run 'harica --api-key ... org-ids' to list options")
+					os.Exit(1)
+				}
 			}
 
 			slog.Debug("Using organization id", slog.String("organization_id", resolvedOrganizationID))
