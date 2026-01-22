@@ -17,6 +17,68 @@ import (
 	"go.mozilla.org/pkcs7"
 )
 
+func scanDERCertificates(data []byte) []*x509.Certificate {
+	// Heuristic extractor: scan for DER SEQUENCE headers that decode as X.509 certificates.
+	// This is intentionally tolerant and is used as a fallback for PKCS#7 bundles that
+	// may use BER/indefinite-length encodings that Go PKCS#7 parsers reject.
+	certs := make([]*x509.Certificate, 0, 4)
+	seen := make(map[string]struct{})
+
+	for i := 0; i+4 < len(data); i++ {
+		if data[i] != 0x30 { // SEQUENCE
+			continue
+		}
+		// Parse DER length
+		b1 := data[i+1]
+		var headerLen int
+		var contentLen int
+		switch {
+		case b1 < 0x80:
+			headerLen = 2
+			contentLen = int(b1)
+		case b1 == 0x80:
+			// Indefinite length (BER) - skip; certificates themselves should be DER.
+			continue
+		default:
+			n := int(b1 & 0x7f)
+			if n < 1 || n > 4 {
+				continue
+			}
+			if i+2+n > len(data) {
+				continue
+			}
+			headerLen = 2 + n
+			l := 0
+			for j := 0; j < n; j++ {
+				l = (l << 8) | int(data[i+2+j])
+			}
+			contentLen = l
+		}
+		if contentLen <= 0 {
+			continue
+		}
+		total := headerLen + contentLen
+		if i+total > len(data) {
+			continue
+		}
+
+		candidate := data[i : i+total]
+		cert, err := x509.ParseCertificate(candidate)
+		if err != nil {
+			continue
+		}
+		key := string(cert.Raw)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		certs = append(certs, cert)
+		i += total - 1
+	}
+
+	return certs
+}
+
 const (
 	CMv1AdminEnterprisesPath = "/cm/v1/admin/enterprises"
 	CMv1BulkCreateSmimePath  = "/cm/v1/bulk/create/smime"
@@ -195,6 +257,9 @@ func ExtractFirstCertificatePEMFromZip(zipBytes []byte) (string, error) {
 		return "", err
 	}
 
+	var lastX509Err error
+	var lastPKCS7Err error
+
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -220,6 +285,8 @@ func ExtractFirstCertificatePEMFromZip(zipBytes []byte) (string, error) {
 		if cert, err := x509.ParseCertificate(data); err == nil {
 			block := &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}
 			return string(pem.EncodeToMemory(block)), nil
+		} else {
+			lastX509Err = err
 		}
 
 		// HARICA bulk S/MIME ZIPs may contain a PKCS#7 (.p7b) bundle.
@@ -240,8 +307,31 @@ func ExtractFirstCertificatePEMFromZip(zipBytes []byte) (string, error) {
 				block := &pem.Block{Type: "CERTIFICATE", Bytes: chosen.Raw}
 				return string(pem.EncodeToMemory(block)), nil
 			}
+		} else {
+			lastPKCS7Err = err
+
+			// Fallback: scan for embedded DER certificates within the PKCS#7 blob.
+			if scanned := scanDERCertificates(data); len(scanned) > 0 {
+				chosen := scanned[0]
+				for _, c := range scanned {
+					if c != nil && !c.IsCA {
+						chosen = c
+						break
+					}
+				}
+				if chosen != nil {
+					block := &pem.Block{Type: "CERTIFICATE", Bytes: chosen.Raw}
+					return string(pem.EncodeToMemory(block)), nil
+				}
+			}
 		}
 	}
 
+	if lastPKCS7Err != nil {
+		return "", fmt.Errorf("no certificate found in zip (last pkcs7 parse error: %w)", lastPKCS7Err)
+	}
+	if lastX509Err != nil {
+		return "", fmt.Errorf("no certificate found in zip (last x509 parse error: %w)", lastX509Err)
+	}
 	return "", errors.New("no certificate found in zip")
 }
