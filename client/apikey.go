@@ -137,31 +137,11 @@ func ListCMv1Enterprises(baseURL, apiKey string, debug bool) ([]CMv1Enterprise, 
 		if v, ok := m["organizationId"]; ok {
 			if s, ok := v.(string); ok {
 				orgID = strings.TrimSpace(s)
-			}
-		}
-		var enterpriseID string
-		if v, ok := m["id"]; ok {
-			if s, ok := v.(string); ok {
-				enterpriseID = strings.TrimSpace(s)
-			}
-		}
-		var name string
-		if v, ok := m["name"]; ok {
-			if s, ok := v.(string); ok {
-				name = strings.TrimSpace(s)
-			}
-		}
-		if name == "" {
-			if v, ok := m["enterpriseName"]; ok {
-				if s, ok := v.(string); ok {
-					name = strings.TrimSpace(s)
-				}
+			} else {
+				continue
 			}
 		}
 
-		if orgID == "" && enterpriseID == "" && name == "" {
-			continue
-		}
 		result = append(result, CMv1Enterprise{OrganizationID: orgID, EnterpriseID: enterpriseID, Name: name})
 	}
 
