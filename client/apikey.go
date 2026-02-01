@@ -88,8 +88,6 @@ const (
 
 type CMv1Enterprise struct {
 	OrganizationID string
-	EnterpriseID   string
-	Name           string
 }
 
 // ListCMv1Enterprises returns enterprise/org information visible to the API key.
@@ -142,7 +140,7 @@ func ListCMv1Enterprises(baseURL, apiKey string, debug bool) ([]CMv1Enterprise, 
 			}
 		}
 
-		result = append(result, CMv1Enterprise{OrganizationID: orgID, EnterpriseID: enterpriseID, Name: name})
+		result = append(result, CMv1Enterprise{OrganizationID: orgID})
 	}
 
 	return result, body, nil

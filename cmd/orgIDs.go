@@ -39,12 +39,6 @@ var orgIDsCmd = &cobra.Command{
 			if _, ok := seen[id]; ok {
 				continue
 			}
-			seen[id] = struct{}{}
-			if strings.TrimSpace(e.Name) != "" {
-				fmt.Printf("%s\t%s\n", id, e.Name)
-			} else {
-				fmt.Println(id)
-			}
 		}
 	},
 }
