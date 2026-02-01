@@ -24,6 +24,69 @@ validator_password: ""
 requester_password: ""
 ```
 
+## Generate S/MIME via API key (bulk)
+
+The `gen-cert smime` command supports an API-key mode (no requester/approver credentials or TOTP needed).
+
+Note: `--api-key` and `--organization-id` are global (root) flags, so they can be placed before or after the subcommands; currently they are only used by `gen-cert smime`.
+
+### Configuration precedence
+
+Precedence is:
+
+1. Flag
+2. Environment variable
+3. Config file
+
+Supported settings:
+
+- Flag: `--api-key`, Env: `HARICA_API_KEY`, Config: `api_key`
+- Flag: `--organization-id`, Env: `HARICA_ORGANIZATION_ID`, Config: `organization_id`
+
+### Usage
+
+Using environment variables:
+
+```sh
+export HARICA_API_KEY="..."
+export HARICA_ORGANIZATION_ID="..." # optional if autodiscovery finds exactly one org id
+
+./harica gen-cert smime \
+  --email "user@example.org" \
+  --given-name "Jane" \
+  --sur-name "Doe" \
+  --friendly-name "Jane Doe" \
+  --cert-type "email_only" \
+  --csr "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----"
+```
+
+Using flags:
+
+```sh
+./harica --api-key "..." --organization-id "..." gen-cert smime \
+  --email "user@example.org" \
+  --given-name "Jane" \
+  --sur-name "Doe" \
+  --friendly-name "Jane Doe" \
+  --cert-type "email_only" \
+  --csr "-----BEGIN CERTIFICATE REQUEST-----\n...\n-----END CERTIFICATE REQUEST-----"
+```
+
+Output in API-key mode:
+
+- Default: prints the PEM certificate to stdout (PowerShell-friendly).
+- `--output zip`: writes the ZIP to `./smime.zip` (or `--zip-out <path>`) and prints the ZIP path.
+
+Note: if `organization_id` is not provided, the CLI will try to autodiscover it via `GET /cm/v1/admin/enterprises`. Autodiscovery only works when exactly one unique organization id is available to the API key.
+
+### Find organization IDs
+
+To list the organization IDs available to your API key:
+
+```sh
+./harica --api-key "..." org-ids
+```
+
 
 ## Automatic Domain Validation using AXFR
 
