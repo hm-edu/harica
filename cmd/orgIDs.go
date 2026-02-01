@@ -39,6 +39,13 @@ var orgIDsCmd = &cobra.Command{
 			if _, ok := seen[id]; ok {
 				continue
 			}
+			seen[id] = struct{}{}
+			fmt.Println(id)
+		}
+
+		if len(seen) == 0 {
+			slog.Error("no organization ids found for this api key")
+			os.Exit(1)
 		}
 	},
 }
