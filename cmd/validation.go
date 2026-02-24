@@ -50,7 +50,7 @@ var validationCmd = &cobra.Command{
 			slog.Warn("You are trying to validate more than 10 domains. This is not recommended. You should use smaller batches.")
 		}
 
-		haricaClient, err := client.NewClient(config.username, config.password, config.totp, client.WithDebug(debug), client.WithRetry(3))
+		haricaClient, err := client.NewClient(config.username, config.password, config.totp, client.WithDebug(debug), client.WithRetry(3), client.WithEnvironment(environment))
 		if err != nil {
 			slog.Error("Failed to create client:", slog.Any("error", err))
 			return
@@ -107,7 +107,7 @@ var validationCmd = &cobra.Command{
 		}
 
 		wg := sync.WaitGroup{}
-		c, err := client.NewClient(config.username, config.password, config.totp, client.WithDebug(debug), client.WithRetry(3))
+		c, err := client.NewClient(config.username, config.password, config.totp, client.WithDebug(debug), client.WithRetry(3), client.WithEnvironment(environment))
 		for domain, code := range validationCodes {
 			slog.Info("Got validation code", slog.String("domain", domain), slog.String("code", code.Code))
 			wg.Add(1)

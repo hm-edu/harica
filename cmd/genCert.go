@@ -135,12 +135,13 @@ var genCertCmd = &cobra.Command{
 		}
 
 		genCertConfig.Csr = strings.ReplaceAll(genCertConfig.Csr, "\\n", "\n")
-		requester, err := client.NewClient(genCertConfig.RequesterEmail, genCertConfig.RequesterPassword, genCertConfig.RequesterTOTPSeed, client.WithDebug(debug))
+
+		requester, err := client.NewClient(genCertConfig.RequesterEmail, genCertConfig.RequesterPassword, genCertConfig.RequesterTOTPSeed, client.WithDebug(debug), client.WithEnvironment(environment))
 		if err != nil {
 			slog.Error("failed to create requester client", slog.Any("error", err))
 			os.Exit(1)
 		}
-		validator, err := client.NewClient(genCertConfig.ValidatorEmail, genCertConfig.ValidatorPassword, genCertConfig.ValidatorTOTPSeed, client.WithDebug(debug))
+		validator, err := client.NewClient(genCertConfig.ValidatorEmail, genCertConfig.ValidatorPassword, genCertConfig.ValidatorTOTPSeed, client.WithDebug(debug), client.WithEnvironment(environment))
 		if err != nil {
 			slog.Error("failed to create validator client", slog.Any("error", err))
 			os.Exit(1)

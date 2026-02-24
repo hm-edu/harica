@@ -108,7 +108,8 @@ var genCertSmimeCmd = &cobra.Command{
 		}
 
 		genCertSmimeConfig.Csr = strings.ReplaceAll(genCertSmimeConfig.Csr, "\\n", "\n")
-		requester, err := client.NewClient(genCertSmimeConfig.RequesterEmail, genCertSmimeConfig.RequesterPassword, genCertSmimeConfig.RequesterTOTPSeed, client.WithDebug(debug))
+
+		requester, err := client.NewClient(genCertSmimeConfig.RequesterEmail, genCertSmimeConfig.RequesterPassword, genCertSmimeConfig.RequesterTOTPSeed, client.WithDebug(debug), client.WithEnvironment(environment))
 		if err != nil {
 			slog.Error("failed to create requester client", slog.Any("error", err))
 			os.Exit(1)
