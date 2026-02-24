@@ -115,7 +115,7 @@ func WithProductionEnvironment() Option {
 	}
 }
 
-func WithStagingEnvironment(c *Client) Option {
+func WithStagingEnvironment() Option {
 	return func(c *Client) {
 		c.baseURL = BaseURLStaging
 	}
@@ -130,6 +130,18 @@ func WithDevelEnvironment() Option {
 func WithDebug(debug bool) Option {
 	return func(c *Client) {
 		c.debug = debug
+	}
+}
+
+// WithEnvironment returns the appropriate environment option based on the environment string
+func WithEnvironment(env string) Option {
+	switch env {
+	case "staging":
+		return WithStagingEnvironment()
+	case "devel":
+		return WithDevelEnvironment()
+	default:
+		return WithProductionEnvironment()
 	}
 }
 

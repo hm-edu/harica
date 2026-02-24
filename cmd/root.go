@@ -7,7 +7,8 @@ import (
 )
 
 var (
-	debug bool
+	debug       bool
+	environment string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -24,4 +25,5 @@ func Execute() {
 
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&debug, "debug", "d", false, "Enable debug mode")
+	rootCmd.PersistentFlags().StringVarP(&environment, "environment", "e", "production", "Environment to use (production, staging, devel)")
 }
