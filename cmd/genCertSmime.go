@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"os"
@@ -21,10 +23,11 @@ type GenCertSmimeConfig struct {
 	RequesterPassword string `mapstructure:"requester_password"`
 	RequesterTOTPSeed string `mapstructure:"requester_totp_seed"`
 	//SMIME
-	Email        string `mapstructure:"email"`
-	FriendlyName string `mapstructure:"friendly_name"`
-	GivenName    string `mapstructure:"given_name"`
-	SurName      string `mapstructure:"sur_name"`
+	Email          string `mapstructure:"email"`
+	FriendlyName   string `mapstructure:"friendly_name"`
+	GivenName      string `mapstructure:"given_name"`
+	SurName        string `mapstructure:"sur_name"`
+	PickupPassword string `mapstructure:"pickup_password"`
 }
 
 var (
@@ -42,8 +45,18 @@ var (
 		"friendly-name":       "friendly_name",
 		"given-name":          "given_name",
 		"sur-name":            "sur_name",
+		"pickup-password":     "pickup_password",
 	}
 )
+
+// generateRandomPassword generates a random password in base64 format of the specified length
+func generateRandomPassword(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(bytes)[:length], nil
+}
 
 // genCertCmd represents the genCert command
 var genCertSmimeCmd = &cobra.Command{
@@ -241,7 +254,25 @@ var genCertSmimeCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// build fake bulk request with sinlge user
+		// Handle pickup password: when a CSR is provided, the pickup password must be empty to avoid issues
+		if strings.TrimSpace(genCertSmimeConfig.Csr) != "" {
+			if genCertSmimeConfig.PickupPassword != "" {
+				slog.Info("Pickup password is ignored when a CSR is provided")
+			}
+			genCertSmimeConfig.PickupPassword = ""
+		} else if genCertSmimeConfig.PickupPassword == "" {
+			var err error
+			genCertSmimeConfig.PickupPassword, err = generateRandomPassword(16)
+			if err != nil {
+				slog.Error("failed to generate random pickup password", slog.Any("error", err))
+				os.Exit(1)
+			}
+			slog.Info("Generated random pickup password", slog.String("password", genCertSmimeConfig.PickupPassword))
+		} else {
+			slog.Info("Using provided pickup password", slog.String("password", genCertSmimeConfig.PickupPassword))
+		}
+
+		// build fake bulk request with single user
 		// it looks like the API still does not fully support requesting a single SMIME certificate
 		// the request endpoint exists but no review/validation endpoint - atleast missing in API description
 		var smimeBulk = models.SmimeBulkRequest{
@@ -251,7 +282,7 @@ var genCertSmimeCmd = &cobra.Command{
 			Email3:         "",
 			GivenName:      genCertSmimeConfig.GivenName,
 			Surname:        genCertSmimeConfig.SurName,
-			PickupPassword: "",
+			PickupPassword: genCertSmimeConfig.PickupPassword,
 			CertType:       genCertSmimeConfig.CertType,
 			CSR:            genCertSmimeConfig.Csr,
 		}
@@ -279,6 +310,7 @@ func init() {
 	genCertSmimeCmd.Flags().String("friendly-name", "", "Name to identify the certificate")
 	genCertSmimeCmd.Flags().String("given-name", "", "Givenname of the certificate requestor")
 	genCertSmimeCmd.Flags().String("sur-name", "", "Surname of the certificate requestor")
+	genCertSmimeCmd.Flags().String("pickup-password", "", "Password for certificate pickup (if not provided, a random password will be generated)")
 	genCertSmimeCmd.Flags().StringVar(&smimeOutputFormat, "output", "pem", "Output format in API-key mode: pem (default) or zip")
 	genCertSmimeCmd.Flags().StringVar(&smimeZipOutPath, "zip-out", "", "Output ZIP path when --output=zip (default: ./smime.zip)")
 }
