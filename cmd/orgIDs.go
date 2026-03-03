@@ -21,7 +21,7 @@ var orgIDsCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		enterprises, raw, err := client.ListCMv1Enterprises(client.BaseURLProduction, apiKey, debug)
+		enterprises, raw, err := client.ListCMv1Enterprises(client.BaseURL(environment), apiKey, debug)
 		if err != nil {
 			if len(raw) > 0 {
 				fmt.Fprintln(os.Stderr, string(raw))

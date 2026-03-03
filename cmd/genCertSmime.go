@@ -132,7 +132,7 @@ var genCertSmimeCmd = &cobra.Command{
 			slog.Info("Using API-key mode for S/MIME bulk issuance")
 			if strings.TrimSpace(resolvedOrganizationID) == "" {
 				slog.Info("No organization id provided; attempting autodiscovery via /cm/v1/admin/enterprises")
-				enterprises, raw, err := client.ListCMv1Enterprises(client.BaseURLProduction, resolvedAPIKey, debug)
+				enterprises, raw, err := client.ListCMv1Enterprises(client.BaseURL(environment), resolvedAPIKey, debug)
 				if err != nil {
 					if len(raw) > 0 {
 						fmt.Fprintln(os.Stderr, string(raw))
@@ -181,7 +181,7 @@ var genCertSmimeCmd = &cobra.Command{
 				slog.Debug("CSR logged:", slog.Any("csr", smimeBulk.CSR))
 			}
 
-			zipBytes, err := client.CreateCMv1SmimeBulkZip(client.BaseURLProduction, resolvedAPIKey, resolvedOrganizationID, smimeBulk, debug)
+			zipBytes, err := client.CreateCMv1SmimeBulkZip(client.BaseURL(environment), resolvedAPIKey, resolvedOrganizationID, smimeBulk, debug)
 			if err != nil {
 				if e, ok := err.(*client.UnexpectedResponseCodeError); ok {
 					fmt.Fprintln(os.Stderr, string(e.Body))

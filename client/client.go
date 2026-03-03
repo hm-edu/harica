@@ -109,39 +109,28 @@ func NewClient(user, password, totpSeed string, options ...Option) (*Client, err
 	return &c, nil
 }
 
-func WithProductionEnvironment() Option {
-	return func(c *Client) {
-		c.baseURL = BaseURLProduction
-	}
-}
-
-func WithStagingEnvironment() Option {
-	return func(c *Client) {
-		c.baseURL = BaseURLStaging
-	}
-}
-
-func WithDevelEnvironment() Option {
-	return func(c *Client) {
-		c.baseURL = BaseURLDevel
-	}
-}
-
 func WithDebug(debug bool) Option {
 	return func(c *Client) {
 		c.debug = debug
 	}
 }
 
-// WithEnvironment returns the appropriate environment option based on the environment string
-func WithEnvironment(env string) Option {
+// BaseURL resolves the base URL string for the given environment name.
+func BaseURL(env string) string {
 	switch env {
 	case "staging":
-		return WithStagingEnvironment()
+		return BaseURLStaging
 	case "devel":
-		return WithDevelEnvironment()
+		return BaseURLDevel
 	default:
-		return WithProductionEnvironment()
+		return BaseURLProduction
+	}
+}
+
+// WithEnvironment returns the appropriate environment option based on the environment string
+func WithEnvironment(env string) Option {
+	return func(c *Client) {
+		c.baseURL = BaseURL(env)
 	}
 }
 
