@@ -15,6 +15,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/hm-edu/harica/models"
 	"go.mozilla.org/pkcs7"
+	"software.sslmate.com/src/go-pkcs12"
 )
 
 func scanDERCertificates(data []byte) []*x509.Certificate {
@@ -220,19 +221,60 @@ func CreateCMv1SmimeBulkZip(baseURL, apiKey, organizationID string, request mode
 	return body, nil
 }
 
+// ExtractPKCSFromZip locates the first PKCS#12 or PKCS#7 file in the zip and returns
+// its raw bytes along with the detected file extension (".p12" or ".p7b").
+func ExtractPKCSFromZip(zipBytes []byte) ([]byte, string, error) {
+	if len(zipBytes) == 0 {
+		return nil, "", errors.New("zip is empty")
+	}
+	zr, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
+	if err != nil {
+		return nil, "", err
+	}
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := strings.ToLower(f.Name)
+		var ext string
+		switch {
+		case strings.HasSuffix(name, ".p12") || strings.HasSuffix(name, ".pfx"):
+			ext = ".p12"
+		case strings.HasSuffix(name, ".p7b") || strings.HasSuffix(name, ".p7c"):
+			ext = ".p7b"
+		default:
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil, "", err
+		}
+		data, readErr := io.ReadAll(io.LimitReader(rc, 25<<20))
+		_ = rc.Close()
+		if readErr != nil {
+			return nil, "", readErr
+		}
+		return data, ext, nil
+	}
+	return nil, "", errors.New("no PKCS#12 or PKCS#7 file found in zip")
+}
+
 // ExtractFirstCertificatePEMFromZip tries to locate the first leaf certificate in the ZIP
 // response and returns it as PEM.
 //
 // The HARICA bulk S/MIME endpoint returns a ZIP on success. For single-user requests
 // we use this helper to keep stdout output compatible with legacy flows.
-func ExtractFirstCertificatePEMFromZip(zipBytes []byte) (string, error) {
+//
+// A private key PEM is also returned if a PKCS#12 file is
+// found and successfully decrypted with the pickup password.
+func ExtractFirstCertificatePEMFromZip(zipBytes []byte, pickupPassword string) (string, string, error) {
 	if len(zipBytes) == 0 {
-		return "", errors.New("zip is empty")
+		return "", "", errors.New("zip is empty")
 	}
 
 	zr, err := zip.NewReader(bytes.NewReader(zipBytes), int64(len(zipBytes)))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	var lastX509Err error
@@ -257,12 +299,29 @@ func ExtractFirstCertificatePEMFromZip(zipBytes []byte) (string, error) {
 			if !strings.HasSuffix(text, "\n") {
 				text += "\n"
 			}
-			return text, nil
+			return text, "", nil
+		}
+
+		// HARICA bulk S/MIME ZIPs may contain a PKCS#12 (.p12) file when no CSR was
+		// supplied. We decrypt it with the pickup password and return the leaf cert
+		// and private key.
+		name := strings.ToLower(f.Name)
+		if strings.HasSuffix(name, ".p12") || strings.HasSuffix(name, ".pfx") {
+			privateKey, cert, _, err := pkcs12.DecodeChain(data, pickupPassword)
+			if err != nil {
+				return "", "", fmt.Errorf("failed to decode pkcs12 file %q (wrong pickup password?): %w", f.Name, err)
+			}
+			certBlock := &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}
+			keyBlock, err := x509.MarshalPKCS8PrivateKey(privateKey)
+			if err != nil {
+				return "", "", fmt.Errorf("failed to marshal private key from pkcs12 file %q: %w", f.Name, err)
+			}
+			return string(pem.EncodeToMemory(certBlock)), string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyBlock})), nil
 		}
 
 		if cert, err := x509.ParseCertificate(data); err == nil {
 			block := &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}
-			return string(pem.EncodeToMemory(block)), nil
+			return string(pem.EncodeToMemory(block)), "", nil
 		} else {
 			lastX509Err = err
 		}
@@ -283,7 +342,7 @@ func ExtractFirstCertificatePEMFromZip(zipBytes []byte) (string, error) {
 			}
 			if chosen != nil {
 				block := &pem.Block{Type: "CERTIFICATE", Bytes: chosen.Raw}
-				return string(pem.EncodeToMemory(block)), nil
+				return string(pem.EncodeToMemory(block)), "", nil
 			}
 		} else {
 			lastPKCS7Err = err
@@ -299,17 +358,17 @@ func ExtractFirstCertificatePEMFromZip(zipBytes []byte) (string, error) {
 				}
 				if chosen != nil {
 					block := &pem.Block{Type: "CERTIFICATE", Bytes: chosen.Raw}
-					return string(pem.EncodeToMemory(block)), nil
+					return string(pem.EncodeToMemory(block)), "", nil
 				}
 			}
 		}
 	}
 
 	if lastPKCS7Err != nil {
-		return "", fmt.Errorf("no certificate found in zip (last pkcs7 parse error: %w)", lastPKCS7Err)
+		return "", "", fmt.Errorf("no certificate found in zip (last pkcs7 parse error: %w)", lastPKCS7Err)
 	}
 	if lastX509Err != nil {
-		return "", fmt.Errorf("no certificate found in zip (last x509 parse error: %w)", lastX509Err)
+		return "", "", fmt.Errorf("no certificate found in zip (last x509 parse error: %w)", lastX509Err)
 	}
-	return "", errors.New("no certificate found in zip")
+	return "", "", errors.New("no certificate found in zip")
 }
