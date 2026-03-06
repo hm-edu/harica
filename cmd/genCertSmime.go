@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"archive/zip"
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -33,8 +35,8 @@ type GenCertSmimeConfig struct {
 var (
 	genCertSmimeConfig GenCertSmimeConfig
 	configPathSmime    string
-	smimeOutputFormat  string
-	smimeZipOutPath    string
+	smimeOutputType    string
+	smimeOutputPath    string
 	keyMappingSmime    = map[string]string{
 		"csr":                 "csr",
 		"cert-type":           "cert_type",
@@ -56,6 +58,136 @@ func generateRandomPassword(length int) (string, error) {
 		return "", err
 	}
 	return base64.URLEncoding.EncodeToString(bytes)[:length], nil
+}
+
+// resolvePickupPassword normalises the pickup password field on genCertSmimeConfig:
+// - clears it when a CSR is provided (the server does not use it and may reject a non-empty value)
+// - generates a random 16-char password when none was supplied
+// - keeps the provided value otherwise
+func resolvePickupPassword(cfg *GenCertSmimeConfig) error {
+	if strings.TrimSpace(cfg.Csr) != "" {
+		if cfg.PickupPassword != "" {
+			slog.Info("Pickup password is ignored when a CSR is provided")
+		}
+		cfg.PickupPassword = ""
+		return nil
+	}
+	if cfg.PickupPassword == "" {
+		pw, err := generateRandomPassword(16)
+		if err != nil {
+			return err
+		}
+		cfg.PickupPassword = pw
+		slog.Info("Generated random pickup password", slog.String("password", cfg.PickupPassword))
+		return nil
+	}
+	slog.Info("Using provided pickup password", slog.String("password", cfg.PickupPassword))
+	return nil
+}
+
+// resolvePKCSData returns the raw PKCS bytes and file extension to use for pkcs/zip
+// output. It tries, in order: raw pkcsBytes from the API-key zip, base64-encoded
+// pkcs12B64 from the session path, and finally pkcs7PEM from the session path.
+func resolvePKCSData(pkcsBytes []byte, pkcsExt, pkcs12B64, pkcs7PEM string) ([]byte, string) {
+	if len(pkcsBytes) > 0 {
+		return pkcsBytes, pkcsExt
+	}
+	if pkcs12B64 != "" {
+		data, err := base64.StdEncoding.DecodeString(pkcs12B64)
+		if err != nil {
+			slog.Error("failed to decode pkcs12 data", slog.Any("error", err))
+			os.Exit(1)
+		}
+		return data, ".p12"
+	}
+	if pkcs7PEM != "" {
+		return []byte(pkcs7PEM), ".p7b"
+	}
+	slog.Error("no PKCS data available for output")
+	os.Exit(1)
+	return nil, ""
+}
+
+// handleSmimeOutput runs the output switch shared by both the API-key and session
+// paths. zipBytes and pkcsBytes/pkcsExt are only populated by the API-key path;
+// certPEM, keyPEM, pkcs7PEM, and pkcs12B64 are used by both.
+//
+//   - pem:  prints certPEM (and keyPEM when present) to stdout
+//   - pkcs: writes the resolved PKCS file to --output-path
+//   - zip:  writes raw zipBytes to --output-path (API-key path), or builds a zip
+//     from the resolved PKCS data (session path)
+func handleSmimeOutput(certPEM, keyPEM, pkcs7PEM, pkcs12B64 string, pkcsBytes []byte, pkcsExt string, zipBytes []byte) {
+	switch strings.ToLower(strings.TrimSpace(smimeOutputType)) {
+	case "pem":
+		fmt.Print(certPEM)
+		if keyPEM != "" {
+			fmt.Print(keyPEM)
+		}
+	case "pkcs":
+		data, ext := resolvePKCSData(pkcsBytes, pkcsExt, pkcs12B64, pkcs7PEM)
+		outPath := strings.TrimSpace(smimeOutputPath)
+		if outPath == "" {
+			outPath = filepath.Join(".", "smime"+ext)
+		}
+		if err := os.WriteFile(outPath, data, 0o644); err != nil {
+			slog.Error("failed to write PKCS file", slog.String("path", outPath), slog.Any("error", err))
+			os.Exit(1)
+		}
+		slog.Info("Wrote PKCS file", slog.String("path", outPath))
+		fmt.Println(outPath)
+	case "zip":
+		outPath := strings.TrimSpace(smimeOutputPath)
+		if outPath == "" {
+			outPath = filepath.Join(".", "smime.zip")
+		}
+		if len(zipBytes) > 0 {
+			if err := os.WriteFile(outPath, zipBytes, 0o644); err != nil {
+				slog.Error("failed to write zip", slog.String("path", outPath), slog.Any("error", err))
+				os.Exit(1)
+			}
+		} else {
+			data, ext := resolvePKCSData(pkcsBytes, pkcsExt, pkcs12B64, pkcs7PEM)
+			buf := new(bytes.Buffer)
+			zw := zip.NewWriter(buf)
+			f, err := zw.Create("smime" + ext)
+			if err != nil {
+				slog.Error("failed to create zip entry", slog.Any("error", err))
+				os.Exit(1)
+			}
+			if _, err := f.Write(data); err != nil {
+				slog.Error("failed to write zip entry", slog.Any("error", err))
+				os.Exit(1)
+			}
+			if err := zw.Close(); err != nil {
+				slog.Error("failed to finalise zip", slog.Any("error", err))
+				os.Exit(1)
+			}
+			if err := os.WriteFile(outPath, buf.Bytes(), 0o644); err != nil {
+				slog.Error("failed to write zip", slog.String("path", outPath), slog.Any("error", err))
+				os.Exit(1)
+			}
+		}
+		slog.Info("Wrote S/MIME ZIP", slog.String("path", outPath))
+		fmt.Println(outPath)
+	default:
+		slog.Error("invalid output type; use pem, pkcs, or zip", slog.String("output-type", smimeOutputType))
+		os.Exit(1)
+	}
+}
+
+// buildSmimeBulkRequest constructs a SmimeBulkRequest from the resolved config.
+func buildSmimeBulkRequest(cfg GenCertSmimeConfig) models.SmimeBulkRequest {
+	return models.SmimeBulkRequest{
+		FriendlyName:   cfg.FriendlyName,
+		Email:          cfg.Email,
+		Email2:         "",
+		Email3:         "",
+		GivenName:      cfg.GivenName,
+		Surname:        cfg.SurName,
+		PickupPassword: cfg.PickupPassword,
+		CertType:       cfg.CertType,
+		CSR:            cfg.Csr,
+	}
 }
 
 // genCertCmd represents the genCert command
@@ -166,20 +298,13 @@ var genCertSmimeCmd = &cobra.Command{
 
 			slog.Debug("Using organization id", slog.String("organization_id", resolvedOrganizationID))
 
-			var smimeBulk = models.SmimeBulkRequest{
-				FriendlyName:   genCertSmimeConfig.FriendlyName,
-				Email:          genCertSmimeConfig.Email,
-				Email2:         "",
-				Email3:         "",
-				GivenName:      genCertSmimeConfig.GivenName,
-				Surname:        genCertSmimeConfig.SurName,
-				PickupPassword: "",
-				CertType:       genCertSmimeConfig.CertType,
-				CSR:            genCertSmimeConfig.Csr,
+			if err := resolvePickupPassword(&genCertSmimeConfig); err != nil {
+				slog.Error("failed to resolve pickup password", slog.Any("error", err))
+				os.Exit(1)
 			}
-			if debug {
-				slog.Debug("CSR logged:", slog.Any("csr", smimeBulk.CSR))
-			}
+
+			smimeBulk := buildSmimeBulkRequest(genCertSmimeConfig)
+			slog.Debug("CSR logged:", slog.Any("csr", smimeBulk.CSR))
 
 			zipBytes, err := client.CreateCMv1SmimeBulkZip(client.BaseURL(environment), resolvedAPIKey, resolvedOrganizationID, smimeBulk, debug)
 			if err != nil {
@@ -195,35 +320,27 @@ var genCertSmimeCmd = &cobra.Command{
 				os.Exit(1)
 			}
 
-			output := strings.ToLower(strings.TrimSpace(smimeOutputFormat))
-			if output == "" {
-				output = "pem"
-			}
-			switch output {
-			case "zip":
-				outPath := strings.TrimSpace(smimeZipOutPath)
-				if outPath == "" {
-					outPath = filepath.Join(".", "smime.zip")
-				}
-				if err := os.WriteFile(outPath, zipBytes, 0o644); err != nil {
-					slog.Error("failed to write zip", slog.String("path", outPath), slog.Any("error", err))
-					os.Exit(1)
-				}
-				slog.Info("Wrote S/MIME ZIP", slog.String("path", outPath))
-				fmt.Println(outPath)
-				return
+			var certPEM, keyPEM string
+			var pkcsBytes []byte
+			var pkcsExt string
+			switch strings.ToLower(strings.TrimSpace(smimeOutputType)) {
 			case "pem":
-				pemCert, err := client.ExtractFirstCertificatePEMFromZip(zipBytes)
+				var err error
+				certPEM, keyPEM, err = client.ExtractFirstCertificatePEMFromZip(zipBytes, genCertSmimeConfig.PickupPassword)
 				if err != nil {
 					slog.Error("failed to extract certificate from zip", slog.Any("error", err))
 					os.Exit(1)
 				}
-				fmt.Print(pemCert)
-				return
-			default:
-				slog.Error("invalid output format; use pem or zip", slog.String("output", smimeOutputFormat))
-				os.Exit(1)
+			case "pkcs":
+				var err error
+				pkcsBytes, pkcsExt, err = client.ExtractPKCSFromZip(zipBytes)
+				if err != nil {
+					slog.Error("failed to extract PKCS file from zip", slog.Any("error", err))
+					os.Exit(1)
+				}
 			}
+			handleSmimeOutput(certPEM, keyPEM, "", "", pkcsBytes, pkcsExt, zipBytes)
+			return
 		}
 
 		if strings.TrimSpace(genCertSmimeConfig.RequesterEmail) == "" || strings.TrimSpace(genCertSmimeConfig.RequesterPassword) == "" || strings.TrimSpace(genCertSmimeConfig.RequesterTOTPSeed) == "" {
@@ -254,46 +371,22 @@ var genCertSmimeCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		// Handle pickup password: when a CSR is provided, the pickup password must be empty to avoid issues
-		if strings.TrimSpace(genCertSmimeConfig.Csr) != "" {
-			if genCertSmimeConfig.PickupPassword != "" {
-				slog.Info("Pickup password is ignored when a CSR is provided")
-			}
-			genCertSmimeConfig.PickupPassword = ""
-		} else if genCertSmimeConfig.PickupPassword == "" {
-			var err error
-			genCertSmimeConfig.PickupPassword, err = generateRandomPassword(16)
-			if err != nil {
-				slog.Error("failed to generate random pickup password", slog.Any("error", err))
-				os.Exit(1)
-			}
-			slog.Info("Generated random pickup password", slog.String("password", genCertSmimeConfig.PickupPassword))
-		} else {
-			slog.Info("Using provided pickup password", slog.String("password", genCertSmimeConfig.PickupPassword))
+		if err := resolvePickupPassword(&genCertSmimeConfig); err != nil {
+			slog.Error("failed to resolve pickup password", slog.Any("error", err))
+			os.Exit(1)
 		}
 
 		// build fake bulk request with single user
 		// it looks like the API still does not fully support requesting a single SMIME certificate
 		// the request endpoint exists but no review/validation endpoint - atleast missing in API description
-		var smimeBulk = models.SmimeBulkRequest{
-			FriendlyName:   genCertSmimeConfig.FriendlyName,
-			Email:          genCertSmimeConfig.Email,
-			Email2:         "",
-			Email3:         "",
-			GivenName:      genCertSmimeConfig.GivenName,
-			Surname:        genCertSmimeConfig.SurName,
-			PickupPassword: genCertSmimeConfig.PickupPassword,
-			CertType:       genCertSmimeConfig.CertType,
-			CSR:            genCertSmimeConfig.Csr,
-		}
+		smimeBulk := buildSmimeBulkRequest(genCertSmimeConfig)
 		slog.Debug("CSR logged:", slog.Any("csr", smimeBulk.CSR))
 		transaction, err := requester.RequestSmimeBulkCertificates(orgs[0].ID, smimeBulk)
 		if err != nil {
 			slog.Error("failed to request certificate", slog.Any("error", err))
 			os.Exit(1)
 		}
-		// regarding the code RequestSmimeBulkCertificates returns: TransactionID: cert.ID, Certificate: cert.Certificate, Pkcs7: cert.Pkcs7
-		fmt.Print(transaction.Certificate)
+		handleSmimeOutput(transaction.Certificate, "", transaction.Pkcs7, transaction.Pkcs12, nil, "", nil)
 	},
 }
 
@@ -311,6 +404,6 @@ func init() {
 	genCertSmimeCmd.Flags().String("given-name", "", "Givenname of the certificate requestor")
 	genCertSmimeCmd.Flags().String("sur-name", "", "Surname of the certificate requestor")
 	genCertSmimeCmd.Flags().String("pickup-password", "", "Password for certificate pickup (if not provided, a random password will be generated)")
-	genCertSmimeCmd.Flags().StringVar(&smimeOutputFormat, "output", "pem", "Output format in API-key mode: pem (default) or zip")
-	genCertSmimeCmd.Flags().StringVar(&smimeZipOutPath, "zip-out", "", "Output ZIP path when --output=zip (default: ./smime.zip)")
+	genCertSmimeCmd.Flags().StringVar(&smimeOutputType, "output-type", "pem", "Output type: pem (default), pkcs (.p12/.p7b), or zip")
+	genCertSmimeCmd.Flags().StringVar(&smimeOutputPath, "output-path", "", "Output file path for pkcs and zip output types (default: ./smime.<ext>)")
 }

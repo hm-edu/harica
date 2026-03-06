@@ -107,6 +107,7 @@ type SmimeBulkResponse struct {
 	TransactionID string `json:"id"`
 	Certificate   string `json:"certificate"`
 	Pkcs7         string `json:"pkcs7"`
+	Pkcs12        string `json:"pkcs12"`
 }
 
 type BulkCertificateListEntry struct {

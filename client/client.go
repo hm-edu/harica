@@ -752,7 +752,8 @@ func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.Smi
 		return nil, err
 	}
 
-	return &models.SmimeBulkResponse{TransactionID: cert.ID, Certificate: cert.Certificate, Pkcs7: cert.Pkcs7}, nil
+	pkcs12, _ := cert.Pkcs12.(string)
+	return &models.SmimeBulkResponse{TransactionID: cert.ID, Certificate: cert.Certificate, Pkcs7: cert.Pkcs7, Pkcs12: pkcs12}, nil
 }
 
 func (c *Client) GetSmimeBulkCertificateEntries() (*[]models.BulkCertificateListEntry, error) {
