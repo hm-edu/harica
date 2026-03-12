@@ -32,6 +32,8 @@ bin/
 
 # bulk response artifacts
 *.zip
+*.p12
+*.p7b
 
 # Config files for local development
 dns_configs
