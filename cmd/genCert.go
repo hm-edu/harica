@@ -24,6 +24,7 @@ type GenCertConfig struct {
 	ValidatorEmail    string   `mapstructure:"validator_email"`
 	ValidatorPassword string   `mapstructure:"validator_password"`
 	ValidatorTOTPSeed string   `mapstructure:"validator_totp_seed"`
+	Quick             bool     `mapstructure:"quick"`
 }
 
 var (
@@ -40,6 +41,7 @@ var (
 		"validator-email":     "validator_email",
 		"validator-password":  "validator_password",
 		"validator-totp-seed": "validator_totp_seed",
+		"quick":               "quick",
 	}
 )
 
@@ -179,17 +181,19 @@ var genCertCmd = &cobra.Command{
 			}
 		}
 
-		transactions, err := requester.GetMyTransactions()
-		if err != nil {
-			slog.Error("failed to get transactions", slog.Any("error", err))
-			os.Exit(1)
-		}
+		if !genCertConfig.Quick {
+			transactions, err := requester.GetMyTransactions()
+			if err != nil {
+				slog.Error("failed to get transactions", slog.Any("error", err))
+				os.Exit(1)
+			}
 
-		for _, t := range transactions {
-			if t.TransactionID == transaction.TransactionID {
-				if t.IsHighRisk && strings.EqualFold(t.TransactionStatus, "Pending") {
-					slog.Error("pending transaction is high risk", slog.String("transaction", t.TransactionID))
-					os.Exit(1)
+			for _, t := range transactions {
+				if t.TransactionID == transaction.TransactionID {
+					if t.IsHighRisk && strings.EqualFold(t.TransactionStatus, "Pending") {
+						slog.Error("pending transaction is high risk", slog.String("transaction", t.TransactionID))
+						os.Exit(1)
+					}
 				}
 			}
 		}
@@ -209,6 +213,7 @@ func init() {
 	genCertCmd.Flags().String("csr", "", "CSR to request certificate with")
 	genCertCmd.Flags().Bool("stdin", false, "Read CSR from stdin")
 	genCertCmd.Flags().StringP("transaction-type", "t", "DV", "Transaction type to request certificate with")
+	genCertCmd.Flags().Bool("quick", false, "Quick mode - skip high-risk transaction checks")
 	genCertCmd.Flags().String("requester-email", "", "Email of requester")
 	genCertCmd.Flags().String("requester-password", "", "Password of requester")
 	genCertCmd.Flags().String("requester-totp-seed", "", "TOTP seed of requester")
