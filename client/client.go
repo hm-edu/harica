@@ -211,7 +211,10 @@ func (c *Client) prepareClient(user, password, totpSeed string, force bool) erro
 }
 
 func (c *Client) loginTotp(user, password, totpSeed string) error {
-	r := resty.New()
+	// HARICA's load balancer silently drops idle keep-alive connections and all
+	// API calls are POSTs, which net/http never replays on a dead connection.
+	// Closing the connection after each request avoids sporadic EOF errors.
+	r := resty.New().SetCloseConnection(true)
 	verificationToken, err := getVerificationToken(r, c.baseURL)
 	if err != nil {
 		return err
@@ -267,7 +270,8 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 }
 
 func (c *Client) login(user, password string) error {
-	r := resty.New()
+	// See loginTotp: close connections to avoid EOFs on stale keep-alives.
+	r := resty.New().SetCloseConnection(true)
 	verificationToken, err := getVerificationToken(r, c.baseURL)
 	if err != nil {
 		return err
