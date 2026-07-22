@@ -179,9 +179,9 @@ func (c *Client) prepareClient(user, password, totpSeed string, force bool) erro
 	c.loginLock.Lock()
 	defer c.loginLock.Unlock()
 	renew := false
-	slog.Info("Preparing client")
+	slog.Debug("Preparing client")
 	if c.currentToken != "" {
-		slog.Info("Token exists, checking expiration")
+		slog.Debug("Token exists, checking expiration.")
 		// Check JWT
 		token, _, err := jwt.NewParser().ParseUnverified(c.currentToken, jwt.MapClaims{})
 		if err != nil {
@@ -191,11 +191,12 @@ func (c *Client) prepareClient(user, password, totpSeed string, force bool) erro
 		if err != nil {
 			return err
 		}
-		slog.Info("Token expires", slog.Time("exp", exp.Time))
 		if exp.Before(time.Now()) || exp.Before(time.Now().Add(c.refreshInterval)) {
 			renew = true
-			slog.Info("Token expired or will expire soon, renewing")
+			slog.Info("Token expired or will expire soon, renewing now", slog.Time("exp", exp.Time), slog.Duration("refreshInterval", c.refreshInterval))
 		}
+	} else {
+		slog.Debug("No token exists, logging in.")
 	}
 	c.user = user
 	c.password = password
