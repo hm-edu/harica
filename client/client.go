@@ -216,6 +216,11 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 	// API calls are POSTs, which net/http never replays on a dead connection.
 	// Closing the connection after each request avoids sporadic EOF errors.
 	r := resty.New().SetCloseConnection(true)
+	if c.requestTimeoutEnabled {
+		// The login runs while holding loginLock exclusively, so a hanging
+		// login request would block every other call on this client.
+		r = r.SetTimeout(c.requestTimeout)
+	}
 	verificationToken, err := getVerificationToken(r, c.baseURL)
 	if err != nil {
 		return err
@@ -273,6 +278,11 @@ func (c *Client) loginTotp(user, password, totpSeed string) error {
 func (c *Client) login(user, password string) error {
 	// See loginTotp: close connections to avoid EOFs on stale keep-alives.
 	r := resty.New().SetCloseConnection(true)
+	if c.requestTimeoutEnabled {
+		// The login runs while holding loginLock exclusively, so a hanging
+		// login request would block every other call on this client.
+		r = r.SetTimeout(c.requestTimeout)
+	}
 	verificationToken, err := getVerificationToken(r, c.baseURL)
 	if err != nil {
 		return err
@@ -706,21 +716,27 @@ func (c *Client) RequestSmimeBulkCertificates(groupId string, request models.Smi
 	data.Flush()
 	c.bulkLock.Lock()
 	defer c.bulkLock.Unlock()
-	c.loginLock.RLock()
-	defer c.loginLock.RUnlock()
 
 	entriesBefore, err := c.GetSmimeBulkCertificateEntries()
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := c.client.R().
-		SetHeader("Content-Type", "multipart/form-data").
-		SetMultipartFormData(map[string]string{
-			"groupId": groupId,
-		}).
-		SetMultipartField("csv", "bulk.csv", "text/csv", bytes.NewReader(b.Bytes())).
-		Post(c.baseURL + CreateBulkCertificatesSMIMEPath)
+	// loginLock must only be held for this single request and never across
+	// the helper calls above/below: they acquire the read lock themselves, and
+	// sync.RWMutex blocks nested read locks as soon as a writer
+	// (SessionRefresh) is waiting, which deadlocks the client for good.
+	resp, err := func() (*resty.Response, error) {
+		c.loginLock.RLock()
+		defer c.loginLock.RUnlock()
+		return c.client.R().
+			SetHeader("Content-Type", "multipart/form-data").
+			SetMultipartFormData(map[string]string{
+				"groupId": groupId,
+			}).
+			SetMultipartField("csv", "bulk.csv", "text/csv", bytes.NewReader(b.Bytes())).
+			Post(c.baseURL + CreateBulkCertificatesSMIMEPath)
+	}()
 	if err != nil {
 		return nil, err
 	}
